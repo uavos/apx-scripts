@@ -1,0 +1,13 @@
+{
+    "C_Cpp.autocomplete": "Default",
+    "C_Cpp.errorSquiggles": "Enabled",
+    "C_Cpp.formatting": "Default",
+    "C_Cpp.intelliSenseEngine": "Default",
+    "editor.formatOnSave": true,
+    "editor.formatOnType": true,
+    "files.exclude": {
+        "**/.DS_Store": true,
+        "compiler": true
+    },
+    "files.insertFinalNewline": true,
+}
