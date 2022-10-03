@@ -8,8 +8,7 @@ and sends some critical data to vehicle's [list of variables](https://docs.uavos
 - Battery current, A. mandala/sns/env/eng/current
 - BEC temperature, °C. mandala/sns/env/eng/temp
 
-KONTRONIK model: JIVE Pro 120+ HV
+## KONTRONIK JIVE Pro 120+ HV
 
-[Operating manual](https://www.kontronik.com/fileadmin/kontronik-sobek/Public/Content/Images/Content/Downloads/Anleitungen/JIVE_Pro.pdf)
-
-[Telemetry protocol](https://www.kontronik.com/fileadmin/kontronik-sobek/Public/Content/Images/Content/Downloads/Software/Kontronik_TelMe_V4.12_1.12_EN.pdf)
+- [Operating manual](https://www.kontronik.com/fileadmin/kontronik-sobek/Public/Content/Images/Content/Downloads/Anleitungen/JIVE_Pro.pdf)
+- [Telemetry protocol](https://www.kontronik.com/fileadmin/kontronik-sobek/Public/Content/Images/Content/Downloads/Software/Kontronik_TelMe_V4.12_1.12_EN.pdf)
