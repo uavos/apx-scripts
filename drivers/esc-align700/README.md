@@ -1,7 +1,7 @@
 # APX script for align700 esc
 
 Script reads and parses telemetry data from KONTRONIK electronic speed control (ESC) on helicopter Align700
-and sends some critical data to vehicle's list of variables (mandala):
+and sends some critical data to vehicle's [list of variables](https://docs.uavos.com/fw/mandala):
 
 - Revolution speed, RPM. mandala/est/env/eng/rpm
 - Battery voltage, V. mandala/sns/env/eng/voltage
