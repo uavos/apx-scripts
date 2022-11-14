@@ -1,4 +1,6 @@
 const PORT_ID = 30;
+const LOOKHERE_PORT_ID = 123;
+const LOOKHERE_DATA_SIZE = 8;
 
 const MAVLINK_MAGIC = 0xFE;
 const MAVLINK_HEADER_SIZE = 6;
@@ -61,8 +63,10 @@ new Float:g_yawOffset = 0.0;            //offset to yaw from gimbal
 new Float:g_pitchOffset = 0.0;          //offset to pitch from gimbal
 new Float:g_yawPosReverse = -1.0;       //multiplier for yaw from gimbal
 new Float:g_pitchPosReverse = 1.0;      //multiplier for pitch from gimbal
-new Float:g_yawCmdReverse = -1.0;        //multiplier for yaw commands
-new Float:g_pitchCmdReverse = -1.0;      //multiplier for pitch commands
+new Float:g_yawCmdReverse = -1.0;       //multiplier for yaw commands
+new Float:g_pitchCmdReverse = -1.0;     //multiplier for pitch commands
+new Float:g_camctr_yaw = 0.0;           //look here data from nav (yaw)
+new Float:g_camctr_pitch = 0.0;         //look here data from nav (pitch)
 
 Float:exp(Float:x)
 {
@@ -102,6 +106,7 @@ Float:bound360(Float:a)
 main()
 {
     serial_listen(PORT_ID, "@OnSerial");
+    serial_listen(LOOKHERE_PORT_ID, "@OnLookHereCommands");
 
     print("GSG140: ready...\n")
     sendRds();
@@ -290,8 +295,8 @@ sendCommandLongControl()
     }
     else if(camMode == 4) //target
     {
-        yawCmd = - bound(get_var(f_cam_yaw) - get_var(f_yaw));
-        pitchCmd = - get_var(f_cam_pitch);
+        yawCmd = - bound(g_camctr_yaw * 180.0 - get_var(f_yaw));
+        pitchCmd = g_camctr_pitch * 180.0;
     } 
     else if(camMode == 5) //fixed
     {
@@ -508,4 +513,18 @@ forward @OnSerial(cnt)
     {
         //printf("GSG140: crc fail in message %d %d\n", msgid, cnt);
     }
+}
+
+forward @OnLookHereCommands(cnt)
+@OnLookHereCommands(cnt)
+{
+    if(cnt != LOOKHERE_DATA_SIZE)
+        return;
+
+    new buffer{LOOKHERE_DATA_SIZE};
+    for(new i = 0; i < cnt; i++)
+        buffer{i} = serial_byte(i);
+
+    g_camctr_yaw = unpackFloat(buffer, 0);
+    g_camctr_pitch = unpackFloat(buffer, 4);
 }
