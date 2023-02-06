@@ -34,7 +34,7 @@ main()
     if(now - g_tp >= 50) {
         g_tp = now;
 
-        if(get_var(f_cam_mode == 4)) {
+        if(get_var(f_cam_mode) == 4) {
             sendLookHereCommands();
         }
     }

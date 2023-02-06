@@ -64,6 +64,7 @@ new Float:g_pitchOffset = 0.0;          //offset to pitch from gimbal
 new Float:g_yawPosReverse = -1.0;       //multiplier for yaw from gimbal
 new Float:g_pitchPosReverse = 1.0;      //multiplier for pitch from gimbal
 new Float:g_yawCmdReverse = -1.0;       //multiplier for yaw commands
+new Float:g_rollCmdReverse = 1.0;       //multiplier for roll commands
 new Float:g_pitchCmdReverse = -1.0;     //multiplier for pitch commands
 new Float:g_camctr_yaw = 0.0;           //look here data from nav (yaw)
 new Float:g_camctr_pitch = 0.0;         //look here data from nav (pitch)
@@ -287,17 +288,19 @@ sendCommandLongControl()
     {
         yawCmd = get_var(f_camcmd_yaw) * g_yawCmdReverse;
         pitchCmd = get_var(f_camcmd_pitch) * g_pitchCmdReverse;
+        rollCmd = get_var(f_camcmd_roll) * g_rollCmdReverse;
     }
     else if(camMode == 3) //speed
     {
         yawCmd = get_var(f_camcmd_yaw) * g_yawCmdReverse;
         pitchCmd = get_var(f_camcmd_pitch) * g_pitchCmdReverse;
+        rollCmd = get_var(f_camcmd_roll) * g_rollCmdReverse;
     }
     else if(camMode == 4) //target
     {
         yawCmd = - bound(g_camctr_yaw * 180.0 - get_var(f_yaw));
-        pitchCmd = g_camctr_pitch * 180.0;
-    } 
+        pitchCmd = g_camctr_pitch * 180.0 * g_pitchCmdReverse;
+    }
     else if(camMode == 5) //fixed
     {
         yawCmd = FIXED_POS_YAW * g_yawCmdReverse;
