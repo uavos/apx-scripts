@@ -6,8 +6,9 @@
 
 #include <apx.h>
 
+// ======================= THR defines & variables ===========================
+
 static constexpr const port_id_t port_id_thr{11};
-static constexpr const port_id_t port_id_fuel{10};
 
 const uint8_t THR_MSG_SIZE = 7;
 
@@ -107,6 +108,77 @@ using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
 using m_eng_mode = Mandala<mandala::cmd::nav::eng::mode>;
 
 using m_thr = Mandala<mandala::ctr::nav::eng::thr>;
+
+
+// ======================= FUEL defines & variables ===========================
+
+static constexpr const port_id_t port_id_fuel{10};
+const uint8_t ADR_SENS1 = 75;
+const uint8_t ADR_SENS2 = 76;
+const uint8_t FUEL_MSG_SIZE = 9;
+
+//editable
+const float V_MAX = 32.0;      //liters
+
+const float P1_TANK2 = 5.0;     //%
+const float P2_TANK2 = 16.0;    //%
+const float V_BLOCK_PUMP = 1.0; //%
+
+const float KF1_RATIO = 1.0;
+const float KF2_RATIO = 3.0;     //tank1 = 3 * tank2
+
+const uint8_t TIME_HYST = 1;       //sec
+const uint8_t TIME_SA = 2;       //sec
+const uint8_t TIMER_MC = 50;      //sec
+
+#define DELAY_MS        200
+#define AVG_MS          10000
+#define AVG_N           AVG_MS/DELAY_MS
+
+float avg_window[AVG_N];
+float avg_summ;
+
+uint8_t msg[FUEL_MSG_SIZE];
+bool m_sensRequest = false;    //false - sens1; true - sens2;
+
+using m_mov_avg = Mandala<mandala::ctr::env::usr::u4>;
+
+using m_fuel_litr = Mandala<mandala::ctr::env::usr::u5>; 
+using m_fuel_perc = Mandala<mandala::sns::env::fuel::level>;
+
+using m_fuel_v1 = Mandala<mandala::ctr::env::usr::u1>;
+using m_fuel_v2 = Mandala<mandala::ctr::env::usr::u2>;
+using m_fuel_ratio = Mandala<mandala::ctr::env::usr::u3>;
+
+using m_pump1 = Mandala<mandala::ctr::env::usr::ub2>;
+using m_pump2 = Mandala<mandala::ctr::env::usr::ub3>;
+
+using m_warn_answer1 = Mandala<mandala::ctr::env::usr::ub5>;
+using m_warn_answer2 = Mandala<mandala::ctr::env::usr::ub6>;
+
+using m_ers = Mandala<mandala::ctr::env::ers::launch>;
+using m_algorithm = Mandala<mandala::ctr::env::usr::ub1>;
+
+bool m_ignitionOld;
+bool m_algoritmOld;
+
+int8_t pump_stage = -1;
+
+float kf_start = 0.0;
+float kf_stop = 0.0;
+float m_vFuelPersent1;
+float m_vFuelPersent2;
+uint32_t m_timeAns1;
+uint32_t m_timeAns2;
+
+float m_timeDeltaPump1;
+bool m_timeDeltaPump1Active = 0;
+
+bool m_timePump1Active = 0;
+
+uint32_t startTimerPumpON;
+bool m_start_pump1;
+
 //---------------------------------------------------------------
 
 //---------------------------------------------------------------
