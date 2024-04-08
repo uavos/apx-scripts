@@ -12,7 +12,7 @@ static constexpr const port_id_t port_id_thr{11};
 
 const uint8_t THR_MSG_SIZE = 7;
 
-uint16_t frame_length;
+//uint16_t frame_length; ???
 
 uint8_t m_rev_buf[8] = {};
 uint8_t m_snd_buf[8] = {};
@@ -131,9 +131,9 @@ const uint8_t TIME_HYST = 1;       //sec
 const uint8_t TIME_SA = 2;       //sec
 const uint8_t TIMER_MC = 50;      //sec
 
-#define DELAY_MS        200
-#define AVG_MS          10000
-#define AVG_N           AVG_MS/DELAY_MS
+const uint8_t DELAY_MS = 200;
+const uint16_t AVG_MS = 10000;
+const uint16_t AVG_N = AVG_MS/DELAY_MS;
 
 float avg_window[AVG_N];
 float avg_summ;
@@ -146,8 +146,8 @@ using m_mov_avg = Mandala<mandala::ctr::env::usr::u4>;
 using m_fuel_litr = Mandala<mandala::ctr::env::usr::u5>; 
 using m_fuel_perc = Mandala<mandala::sns::env::fuel::level>;
 
-using m_fuel_v1 = Mandala<mandala::ctr::env::usr::u1>;
-using m_fuel_v2 = Mandala<mandala::ctr::env::usr::u2>;
+using m_fuel_v1 = Mandala<mandala::ctr::env::usrf::f1>;
+using m_fuel_v2 = Mandala<mandala::ctr::env::usrf::f2>;
 using m_fuel_ratio = Mandala<mandala::ctr::env::usr::u3>;
 
 using m_pump1 = Mandala<mandala::ctr::env::usr::ub2>;
@@ -159,8 +159,10 @@ using m_warn_answer2 = Mandala<mandala::ctr::env::usr::ub6>;
 using m_ers = Mandala<mandala::ctr::env::ers::launch>;
 using m_algorithm = Mandala<mandala::ctr::env::usr::ub1>;
 
-bool m_ignitionOld;
-bool m_algoritmOld;
+using f_ctr_elevator = Mandala<mandala::ctr::env::att:elv>;
+
+bool m_ignitionOld = false;
+bool m_algoritmOld = false;
 
 int8_t pump_stage = -1;
 
@@ -168,20 +170,18 @@ float kf_start = 0.0;
 float kf_stop = 0.0;
 float m_vFuelPersent1;
 float m_vFuelPersent2;
-uint32_t m_timeAns1;
-uint32_t m_timeAns2;
+uint32_t m_timeAns1 = 0;
+uint32_t m_timeAns2 = 0;
 
-float m_timeDeltaPump1;
+uint32_t m_timeDeltaPump1;
 bool m_timeDeltaPump1Active = 0;
 
 bool m_timePump1Active = 0;
 
-uint32_t startTimerPumpON;
-bool m_start_pump1;
+uint32_t startTimerPumpON = 0;
+bool m_start_pump1 = false;
 
-//---------------------------------------------------------------
-
-//---------------------------------------------------------------
+// =========================== THR CRC =============================
 static const unsigned char crc_array[] = {
     0x00, 0x5e, 0xbc, 0xe2, 0x61, 0x3f, 0xdd, 0x83, 0xc2, 0x9c, 0x7e, 0x20, 0xa3, 0xfd, 0x1f, 0x41,
     0x9d, 0xc3, 0x21, 0x7f, 0xfc, 0xa2, 0x40, 0x1e, 0x5f, 0x01, 0xe3, 0xbd, 0x3e, 0x60, 0x82, 0xdc,
@@ -201,9 +201,6 @@ static const unsigned char crc_array[] = {
     0x74, 0x2a, 0xc8, 0x96, 0x15, 0x4b, 0xa9, 0xf7, 0xb6, 0xe8, 0x0a, 0x54, 0xd7, 0x89, 0x6b, 0x35,
 };
 
-/***************************************************************
-** CRC8
-***************************************************************/
 unsigned char calc_crc8(unsigned char *buf, unsigned char crc_len)
 {
     unsigned char i, crc8 = 0;
@@ -212,7 +209,27 @@ unsigned char calc_crc8(unsigned char *buf, unsigned char crc_len)
     }
     return crc8;
 }
-//---------------------------------------------------------------
+
+// =========================== FUEL CRC =============================
+uint8_t calcCrc(const uint8_t *buf, size_t size)
+{
+    uint8_t crc = 0x00;
+    for(uint8_t j = 0; j < size; j++){
+        uint8_t i = buf[j] ^ crc;
+        crc = 0;
+        if (i & 0x01) crc ^= 0x5e;
+        if (i & 0x02) crc ^= 0xbc;
+        if (i & 0x04) crc ^= 0x61;
+        if (i & 0x08) crc ^= 0xc2;
+        if (i & 0x10) crc ^= 0x9d;
+        if (i & 0x20) crc ^= 0x23;
+        if (i & 0x40) crc ^= 0x46;
+        if (i & 0x80) crc ^= 0x8c;
+    }
+    return crc%256;
+}
+
+// ======================== THR FUNCTIONS ==========================
 float LimitSignal(float signal, const float &min, const float &max)
 {
     if (signal < min)
@@ -223,7 +240,6 @@ float LimitSignal(float signal, const float &min, const float &max)
 
     return signal;
 }
-//---------------------------------------------------------------
 
 /***************************************************************
 ** Set State for RC Switch
@@ -299,7 +315,6 @@ const char *EcuStrStatus(uint32_t id)
     return "unknown";
 }
 
-//---------------------------------------------------------------
 void state_comm(void)
 {
     int32_t rpm;
@@ -390,7 +405,7 @@ void state_id_state8()
 {
     m_engine_idle_rpm = (m_rev_buf[3]) * 1000;
 }
-//---------------------------------------------------------------
+
 void print_and_save_param()
 {
     if (m_error_code != m_last_error_code) {
@@ -411,48 +426,7 @@ void print_and_save_param()
     m_thr_fb::publish((uint32_t) m_throttle);
 
 }
-//---------------------------------------------------------------
-int main()
-{
-    frame_length = 0;
 
-    task("on_task", 300);
-    receive(port_id_thr, "on_serial");
-
-    m_pwr_ign(); //subscribe
-    m_thr();
-    m_eng_mode();
-
-    return 0;
-}
-//---------------------------------------------------------------
-EXPORT void on_serial(const uint8_t *data, size_t size)
-{
-    frame_length = 0;
-
-    if (size != MSG_SIZE) { //MSG_SIZE
-        return;
-    }
-
-    memcpy(&m_rev_buf, data, MSG_SIZE);
-
-    if (calc_crc8(m_rev_buf, MSG_SIZE - 1) == m_rev_buf[MSG_SIZE - 1]) {
-        state_comm();
-        switch (m_rev_buf[0] & 0x0F) {
-        case 1: { state_id_state1(); break; };
-        case 2: { state_id_state2(); break; };
-        case 3: { state_id_state3(); break; };
-        case 4: { state_id_state4(); break; };
-        case 5: { state_id_state5(); break; };
-        case 6: { state_id_state6(); break; };
-        case 7: { state_id_state7(); break; };
-        case 8: { state_id_state8(); break; };
-        }
-        print_and_save_param();
-    }
-}
-
-//---------------------------------------------------------------
 uint8_t get_send_buf(uint8_t **ppbuf)
 {
     if (ppbuf)
@@ -520,8 +494,8 @@ uint8_t get_send_buf(uint8_t **ppbuf)
         return 4;
     }
 }
-//---------------------------------------------------------------
-EXPORT void on_task()
+
+EXPORT void on_task_thr()
 {
 
     bool on_power_ignition = (bool)m_pwr_ign::value();
@@ -561,4 +535,214 @@ EXPORT void on_task()
     if (len) {
         send(port_id_thr, cmd, len, true);
     }
+}
+
+EXPORT void on_serial_thr(const uint8_t *data, size_t size)
+{
+    //frame_length = 0; ???
+
+    if (size != THR_MSG_SIZE) { //MSG_SIZE
+        return;
+    }
+
+    memcpy(&m_rev_buf, data, THR_MSG_SIZE);
+
+    if (calc_crc8(m_rev_buf, THR_MSG_SIZE - 1) == m_rev_buf[THR_MSG_SIZE - 1]) {
+        state_comm();
+        switch (m_rev_buf[0] & 0x0F) {
+        case 1: { state_id_state1(); break; };
+        case 2: { state_id_state2(); break; };
+        case 3: { state_id_state3(); break; };
+        case 4: { state_id_state4(); break; };
+        case 5: { state_id_state5(); break; };
+        case 6: { state_id_state6(); break; };
+        case 7: { state_id_state7(); break; };
+        case 8: { state_id_state8(); break; };
+        }
+        print_and_save_param();
+    }
+}
+
+// ======================== FUEL FUNCTIONS ==========================
+void moving_average()
+{
+    for(uint8_t i = 0; i < AVG_N-1; i++){
+      avg_window[i] = avg_window[i+1];
+    }
+
+    avg_window[AVG_N-1] = f_ctr_elevator::value();
+
+    avg_summ = 0.0;
+    for(uint8_t i = 0; i < AVG_N; i++){
+      avg_summ += avg_window[i];
+    }
+
+    m_mov_avg::publish(avg_summ / float(AVG_N))
+
+}
+
+void fuel_manual_control()
+{
+    //check state pump1
+    if(m_pump1::value() && !m_start_pump1){
+      m_start_pump1 = true;
+      startTimerPumpON = time_ms();
+      printf("VM:FP1 manual ON...\n");
+    } else if(!m_pump1::value() && m_start_pump1){
+      m_start_pump1 = false;
+      printf("VM:FP1 manual OFF...\n");
+    }
+
+    //check time pump ON
+    if(((time_ms() - startTimerPumpON) > TIMER_MC * 1000) && m_pump1::value()){
+      printf("VM:Timer STOP...\n");
+      m_pump1::publish(0);
+    }
+}
+
+void fuel_auto_control()
+{
+    uint32_t localTime = time_ms();
+
+    if(m_vFuelPersent2 < 1.0)
+      m_vFuelPersent2 = 1.0;
+
+    fuel_ratio::publish(m_vFuelPersent1 / m_vFuelPersent2);
+
+    if(m_vFuelPersent2 > P2_TANK2 && !m_pump1::value()) {
+      pump_stage = 1;
+      kf_start = KF2_RATIO;
+      kf_stop = kf_start - 0.5;
+    } else if(m_vFuelPersent1 > P2_TANK2 && !m_pump1::value()) {
+      pump_stage = 2;
+      //kf_start = interpolate(m_vFuelPersent2, P1_TANK2, P2_TANK2, KF1_RATIO, KF2_RATIO);
+      kf_start = 0.0;//not used
+      kf_stop = 0.0; //not used
+    } else if(!m_pump1) {
+      pump_stage = 3;
+      kf_start = 1.1;
+      kf_stop = 0.8;
+    }
+
+    //start pump1
+    if(m_vFuelPersent1 > V_BLOCK_PUMP && !m_pump1::value()) {
+
+      bool start_pump = false;
+
+      if(fuel_ratio::value() > kf_start && (pump_stage == 1 || pump_stage == 3)) {
+        start_pump = true;
+      }
+
+      if(pump_stage == 2 && m_vFuelPersent2 < P2_TANK2 * 0.9) {
+        start_pump = true;
+      }
+
+      if(start_pump) {
+        if(!m_timeDeltaPump1Active) {
+          m_timeDeltaPump1Active = true;
+          m_timeDeltaPump1 = localTime;
+        } else if(m_timeDeltaPump1 + TIME_HYST*1000 < localTime) {
+          m_timeDeltaPump1Active = false;
+          m_timePump1Active = true;
+          printf("VM:FP1 start:%.2f...\n", kf_start);
+          m_pump1::publish(1);
+        }
+      }
+    } else {
+      m_timeDeltaPump1Active = false;
+    }
+
+    //stop pump1
+    if(m_timePump1Active && m_pump1::value()) {
+
+      bool stop_pump = false;
+
+      if((pump_stage == 1 || pump_stage == 3) && fuel_ratio::value() < kf_stop) {
+        stop_pump = true;
+      }
+
+      if(pump_stage == 2 && m_vFuelPersent2 > P2_TANK2 * 1.1) {
+        stop_pump = true;
+      }
+
+      if((m_vFuelPersent2 > m_vFuelPersent1) && (pump_stage != 3)) {
+        stop_pump = true;
+      }
+
+      if(stop_pump) {
+        printf("VM:FP1 stop:%.2f...\n", kf_stop);
+        m_timePump1Active = false;
+        m_pump1::publish(0);
+      }
+    }
+
+    //check answer time from sensor
+    if(m_timeAns1+TIME_SA*1000 < localTime)
+        m_warn_answer1::publish(1);
+    else
+        m_warn_answer1::publish(0);
+
+    if(m_timeAns2+TIME_SA*1000 < localTime)
+        set_var(MANDALA_WARN_ANSWER2, 1, true);
+        m_warn_answer2::publish(1);
+    else
+        m_warn_answer2::publish(0);
+}
+
+EXPORT void on_task_fuel()
+{
+
+}
+
+EXPORT void on_serial_fuel(const uint8_t *data, size_t size)
+{
+    if(size == FUEL_MSG_SIZE){   //typePack(0)[0x3E] adr(1) fmt(2) data(3) crc(8)
+        if((data[0] == 0x3E) && (data[2] == 0x06)) {
+            if(data[8] == calcCrc(data, 8)) {
+                if(data[1] == ADR_SENS1) {
+                    m_timeAns1 = time_ms();
+                    float m_vFuel1 = (float) (data[4] | (data[5] << 8)) / 10.0f;
+                    m_fuel_v1::publish(m_vFuel1);
+                    //printf("sens1: %f\r\n", m_vFuel1);
+                } else if(data[1] == ADR_SENS2) {
+                    m_timeAns2 = time_ms();
+                    float m_vFuel2 = (float) (data[4] | (data[5] << 8)) / 10.0f;
+                    m_fuel_v2::publish(m_vFuel2);
+                    //printf("sens2: %f\r\n", m_vFuel2);
+                }
+            }
+        }
+    }
+}
+
+//---------------------------------------------------------------
+int main()
+{
+    //frame_length = 0; ???
+    
+    //throttle
+    m_pwr_ign(); //subscribe
+    m_thr();
+    m_eng_mode();
+    task("on_task_thr", 300);
+    receive(port_id_thr, "on_serial_thr");
+
+    
+    //fuel
+    m_mov_avg();
+    m_fuel_litr();
+    m_fuel_perc();
+    m_fuel_v1();
+    m_fuel_v2();
+    m_fuel_ratio();
+    m_pump1();
+    m_pump2();
+    m_warn_answer1();
+    m_warn_answer2();
+    m_ers();
+    m_algorithm();  // 0 - fuel auto control, 1 - fuel manual control
+    task("on_task_fuel", DELAY_MS);
+    receive(port_id_fuel, "on_serial_fuel");
+
+    return 0;
 }
