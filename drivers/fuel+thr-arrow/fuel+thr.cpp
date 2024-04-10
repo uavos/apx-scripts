@@ -119,11 +119,11 @@ const uint8_t FUEL_MSG_SIZE = 9;
 //editable
 const float V_MAX = 32.0;      //liters
 
-const float P1_TANK2 = 5.0;     //%
+//const float P1_TANK2 = 5.0;     //%
 const float P2_TANK2 = 16.0;    //%
 const float V_BLOCK_PUMP = 1.0; //%
 
-const float KF1_RATIO = 1.0;
+//const float KF1_RATIO = 1.0;
 const float KF2_RATIO = 3.0;     //tank1 = 3 * tank2
 
 const uint8_t TIME_HYST = 1;       //sec
@@ -158,10 +158,10 @@ using m_warn_answer2 = Mandala<mandala::est::env::usrb::b5>;
 using m_ers = Mandala<mandala::ctr::env::ers::launch>;
 using m_algorithm = Mandala<mandala::est::env::usrb::b1>;
 
-using m_ctr_elevator = Mandala<mandala::ctr::env::att::elv>;
+using m_ctr_elevator = Mandala<mandala::ctr::nav::att::elv>;
 
 bool m_ignitionOld = false;
-bool m_algoritmOld = false;
+bool m_algorithmOld = false;
 
 int8_t pump_stage = -1;
 
@@ -576,26 +576,26 @@ void moving_average()
       avg_summ += avg_window[i];
     }
 
-    m_mov_avg::publish(avg_summ / float(AVG_N))
+    m_mov_avg::publish(avg_summ / AVG_N);
 
 }
 
 void fuel_manual_control()
 {
     //check state pump1
-    if(m_pump1::value() && !m_start_pump1){
+    if((bool)m_pump1::value() && !m_start_pump1){
       m_start_pump1 = true;
       startTimerPumpON = time_ms();
       printf("VM:FP1 manual ON...\n");
-    } else if(!m_pump1::value() && m_start_pump1){
+    } else if(!(bool)m_pump1::value() && m_start_pump1){
       m_start_pump1 = false;
       printf("VM:FP1 manual OFF...\n");
     }
 
     //check time pump ON
-    if(((time_ms() - startTimerPumpON) > TIMER_MC * 1000) && m_pump1::value()){
+    if(((time_ms() - startTimerPumpON) > TIMER_MC * 1000) && (bool)m_pump1::value()){
       printf("VM:Timer STOP...\n");
-      m_pump1::publish(0);
+      m_pump1::publish((uint32_t)0);
     }
 }
 
@@ -603,36 +603,36 @@ void fuel_auto_control()
 {
     uint32_t localTime = time_ms();
 
-    if(m_vFuelPersent2 < 1.0)
-      m_vFuelPersent2 = 1.0;
+    if(m_vFuelPersent2 < 1.0f)
+      m_vFuelPersent2 = 1.0f;
 
-    fuel_ratio::publish(m_vFuelPersent1 / m_vFuelPersent2);
+    m_fuel_ratio::publish(m_vFuelPersent1 / m_vFuelPersent2);
 
-    if(m_vFuelPersent2 > P2_TANK2 && !m_pump1::value()) {
+    if(m_vFuelPersent2 > P2_TANK2 && !(bool)m_pump1::value()) {
       pump_stage = 1;
       kf_start = KF2_RATIO;
-      kf_stop = kf_start - 0.5;
-    } else if(m_vFuelPersent1 > P2_TANK2 && !m_pump1::value()) {
+      kf_stop = kf_start - 0.5f;
+    } else if(m_vFuelPersent1 > P2_TANK2 && !(bool)m_pump1::value()) {
       pump_stage = 2;
       //kf_start = interpolate(m_vFuelPersent2, P1_TANK2, P2_TANK2, KF1_RATIO, KF2_RATIO);
       kf_start = 0.0;//not used
       kf_stop = 0.0; //not used
-    } else if(!m_pump1) {
+    } else if(!(bool)m_pump1::value()) {
       pump_stage = 3;
-      kf_start = 1.1;
-      kf_stop = 0.8;
+      kf_start = 1.1f;
+      kf_stop = 0.8f;
     }
 
     //start pump1
-    if(m_vFuelPersent1 > V_BLOCK_PUMP && !m_pump1::value()) {
+    if(m_vFuelPersent1 > V_BLOCK_PUMP && !(bool)m_pump1::value()) {
 
       bool start_pump = false;
 
-      if(fuel_ratio::value() > kf_start && (pump_stage == 1 || pump_stage == 3)) {
+      if(m_fuel_ratio::value() > kf_start && (pump_stage == 1 || pump_stage == 3)) {
         start_pump = true;
       }
 
-      if(pump_stage == 2 && m_vFuelPersent2 < P2_TANK2 * 0.9) {
+      if(pump_stage == 2 && m_vFuelPersent2 < P2_TANK2 * 0.9f) {
         start_pump = true;
       }
 
@@ -644,7 +644,7 @@ void fuel_auto_control()
           m_timeDeltaPump1Active = false;
           m_timePump1Active = true;
           printf("VM:FP1 start:%.2f...\n", kf_start);
-          m_pump1::publish(1);
+          m_pump1::publish((uint32_t)1);
         }
       }
     } else {
@@ -652,15 +652,15 @@ void fuel_auto_control()
     }
 
     //stop pump1
-    if(m_timePump1Active && m_pump1::value()) {
+    if(m_timePump1Active && (bool)m_pump1::value()) {
 
       bool stop_pump = false;
 
-      if((pump_stage == 1 || pump_stage == 3) && fuel_ratio::value() < kf_stop) {
+      if((pump_stage == 1 || pump_stage == 3) && m_fuel_ratio::value() < kf_stop) {
         stop_pump = true;
       }
 
-      if(pump_stage == 2 && m_vFuelPersent2 > P2_TANK2 * 1.1) {
+      if(pump_stage == 2 && m_vFuelPersent2 > P2_TANK2 * 1.1f) {
         stop_pump = true;
       }
 
@@ -671,69 +671,69 @@ void fuel_auto_control()
       if(stop_pump) {
         printf("VM:FP1 stop:%.2f...\n", kf_stop);
         m_timePump1Active = false;
-        m_pump1::publish(0);
+        m_pump1::publish((uint32_t)0);
       }
     }
 
     //check answer time from sensor
     if(m_timeAns1+TIME_SA*1000 < localTime)
-        m_warn_answer1::publish(1);
+        m_warn_answer1::publish((uint32_t)1);
     else
-        m_warn_answer1::publish(0);
+        m_warn_answer1::publish((uint32_t)0);
 
     if(m_timeAns2+TIME_SA*1000 < localTime)
-        m_warn_answer2::publish(1);
+        m_warn_answer2::publish((uint32_t)1);
     else
-        m_warn_answer2::publish(0);
+        m_warn_answer2::publish((uint32_t)0);
 }
 
 EXPORT void on_task_fuel()
 {
     //test fuel sensor
     float ctr_thr = m_thr::value();
-    if(ctr_thr < 0.01)
-        ctr_thr = 0.01;
-    m_fuel_v2::publish(m_fuel_v2::value() - 0.05 * ctr_thr);
-    if(m_fuel_v2::value() < 0.1)
-        m_fuel_v2::publish(0.1);
-    if(m_pump1::value() && m_fuel_v1::value() > 0.01) {
-        m_fuel_v1::publish(m_fuel_v1::value() - 0.1);
-        m_fuel_v2::publish(m_fuel_v2::value() + 0.1);
+    if(ctr_thr < 0.01f)
+        ctr_thr = 0.01f;
+    m_fuel_v2::publish((float) m_fuel_v2::value() - 0.05f * ctr_thr);
+    if(m_fuel_v2::value() < 0.1f)
+        m_fuel_v2::publish(0.1f);
+    if((bool)m_pump1::value() && m_fuel_v1::value() > 0.01f) {
+        m_fuel_v1::publish((float) m_fuel_v1::value() - 0.1f);
+        m_fuel_v2::publish((float) m_fuel_v2::value() + 0.1f);
     }
 
     moving_average();
 
-    m_vFuelPersent1 = m_fuel_v1::value() * 100.0 / V_MAX;
-    m_vFuelPersent2 = m_fuel_v2::value() * 100.0 / V_MAX;
+    m_vFuelPersent1 = m_fuel_v1::value() * 100.0f / V_MAX;
+    m_vFuelPersent2 = m_fuel_v2::value() * 100.0f / V_MAX;
 
     m_fuel_litr::publish(m_fuel_v1::value() + m_fuel_v2::value());
 
-    if (m_ers::value()){
-        if(m_pump1::value()){
-            m_pump1::publish(0);
+    if ((bool)m_ers::value()){
+        if((bool)m_pump1::value()){
+            m_pump1::publish((uint32_t)0);
         }
-        if(m_pump2::value()){
-            m_pump2::publish(0);
+        if((bool)m_pump2::value()){
+            m_pump2::publish((uint32_t)0);
         }
     }else{
 
-        if(m_pwr_ign::value() != m_ignitionOld){
-            m_ignitionOld = m_pwr_ign::value();
+        if((bool)m_pwr_ign::value() != m_ignitionOld){
+            m_ignitionOld = (bool)m_pwr_ign::value();
 
-            if(!m_pwr_ign::value() && m_pump2::value()){
-                m_pump2::publish(0);
+            if(!(bool)m_pwr_ign::value() && (bool)m_pump2::value()){
+                m_pump2::publish((uint32_t)0);
             }
         }
 
-        if(m_algoritm::value() != m_algoritmOld){
-            m_algoritmOld = m_algoritm::value();
+        if((bool)m_algorithm::value() != m_algorithmOld){
+            m_algorithmOld = (bool)m_algorithm::value();
 
-            if(m_algoritm::value() && m_pump1::value()){
-                m_pump1::publish(0);
+            if((bool)m_algorithm::value() && (bool)m_pump1::value()){
+                m_pump1::publish((uint32_t)0);
             }
         }
 
-        if(!m_algoritm::value()){
+        if(!(bool)m_algorithm::value()){
             fuel_auto_control();
         }else{
             fuel_manual_control();
@@ -797,16 +797,16 @@ int main()
     m_ers();
     m_algorithm();  // 0 - fuel auto control, 1 - fuel manual control
 
-    m_pump1::publish(0);
-    m_pump2::publish(0);
-    m_algorithm::publish(0);
+    m_pump1::publish((uint32_t)0);
+    m_pump2::publish((uint32_t)0);
+    m_algorithm::publish((uint32_t)0);
     startTimerPumpON = time_ms();
 
     task("on_task_fuel", DELAY_MS);
     receive(port_id_fuel, "on_serial_fuel");
 
-    m_fuel_v1::publish(32.0);
-    m_fuel_v2::publish(32.0);
+    m_fuel_v1::publish((float)32.0f);
+    m_fuel_v2::publish((float)32.0f);
 
     return 0;
 }
