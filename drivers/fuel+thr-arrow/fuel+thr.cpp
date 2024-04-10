@@ -12,7 +12,7 @@ static constexpr const port_id_t port_id_thr{11};
 
 const uint8_t THR_MSG_SIZE = 7;
 
-//uint16_t frame_length; ???
+//uint16_t frame_length; unused ???
 
 uint8_t m_rev_buf[8] = {};
 uint8_t m_snd_buf[8] = {};
@@ -100,7 +100,6 @@ using m_eng_voltage = Mandala<mandala::sns::env::eng::voltage>;
 using m_vsrv = Mandala<mandala::sns::env::pwr::vsrv>;
 using m_pump_volt = Mandala<mandala::est::env::usr::u2>; //pump voltage
 using m_thr_fb = Mandala<mandala::est::env::usr::u1>;    //fb throttle
-
 //---------------------------------------------------------------
 float new_throttle;
 bool start_eng = false;
@@ -141,25 +140,25 @@ float avg_summ;
 uint8_t msg[FUEL_MSG_SIZE];
 bool m_sensRequest = false;    //false - sens1; true - sens2;
 
-using m_mov_avg = Mandala<mandala::ctr::env::usr::u4>;
+using m_mov_avg = Mandala<mandala::est::env::usr::u4>;
 
-using m_fuel_litr = Mandala<mandala::ctr::env::usr::u5>; 
+using m_fuel_litr = Mandala<mandala::est::env::usr::u5>; 
 using m_fuel_perc = Mandala<mandala::sns::env::fuel::level>;
 
-using m_fuel_v1 = Mandala<mandala::ctr::env::usrf::f1>;
-using m_fuel_v2 = Mandala<mandala::ctr::env::usrf::f2>;
-using m_fuel_ratio = Mandala<mandala::ctr::env::usr::u3>;
+using m_fuel_v1 = Mandala<mandala::est::env::usr::u6>;
+using m_fuel_v2 = Mandala<mandala::est::env::usr::u7>;
+using m_fuel_ratio = Mandala<mandala::est::env::usr::u3>;
 
-using m_pump1 = Mandala<mandala::ctr::env::usr::ub2>;
-using m_pump2 = Mandala<mandala::ctr::env::usr::ub3>;
+using m_pump1 = Mandala<mandala::est::env::usrb::b2>;
+using m_pump2 = Mandala<mandala::est::env::usrb::b3>;
 
-using m_warn_answer1 = Mandala<mandala::ctr::env::usr::ub5>;
-using m_warn_answer2 = Mandala<mandala::ctr::env::usr::ub6>;
+using m_warn_answer1 = Mandala<mandala::est::env::usrb::b4>;
+using m_warn_answer2 = Mandala<mandala::est::env::usrb::b5>;
 
 using m_ers = Mandala<mandala::ctr::env::ers::launch>;
-using m_algorithm = Mandala<mandala::ctr::env::usr::ub1>;
+using m_algorithm = Mandala<mandala::est::env::usrb::b1>;
 
-using f_ctr_elevator = Mandala<mandala::ctr::env::att:elv>;
+using m_ctr_elevator = Mandala<mandala::ctr::env::att::elv>;
 
 bool m_ignitionOld = false;
 bool m_algoritmOld = false;
@@ -539,7 +538,7 @@ EXPORT void on_task_thr()
 
 EXPORT void on_serial_thr(const uint8_t *data, size_t size)
 {
-    //frame_length = 0; ???
+    //frame_length = 0; unused ???
 
     if (size != THR_MSG_SIZE) { //MSG_SIZE
         return;
@@ -570,7 +569,7 @@ void moving_average()
       avg_window[i] = avg_window[i+1];
     }
 
-    avg_window[AVG_N-1] = f_ctr_elevator::value();
+    avg_window[AVG_N-1] = m_ctr_elevator::value();
 
     avg_summ = 0.0;
     for(uint8_t i = 0; i < AVG_N; i++){
@@ -683,7 +682,6 @@ void fuel_auto_control()
         m_warn_answer1::publish(0);
 
     if(m_timeAns2+TIME_SA*1000 < localTime)
-        set_var(MANDALA_WARN_ANSWER2, 1, true);
         m_warn_answer2::publish(1);
     else
         m_warn_answer2::publish(0);
@@ -691,7 +689,64 @@ void fuel_auto_control()
 
 EXPORT void on_task_fuel()
 {
+    //test fuel sensor
+    float ctr_thr = m_thr::value();
+    if(ctr_thr < 0.01)
+        ctr_thr = 0.01;
+    m_fuel_v2::publish(m_fuel_v2::value() - 0.05 * ctr_thr);
+    if(m_fuel_v2::value() < 0.1)
+        m_fuel_v2::publish(0.1);
+    if(m_pump1::value() && m_fuel_v1::value() > 0.01) {
+        m_fuel_v1::publish(m_fuel_v1::value() - 0.1);
+        m_fuel_v2::publish(m_fuel_v2::value() + 0.1);
+    }
 
+    moving_average();
+
+    m_vFuelPersent1 = m_fuel_v1::value() * 100.0 / V_MAX;
+    m_vFuelPersent2 = m_fuel_v2::value() * 100.0 / V_MAX;
+
+    m_fuel_litr::publish(m_fuel_v1::value() + m_fuel_v2::value());
+
+    if (m_ers::value()){
+        if(m_pump1::value()){
+            m_pump1::publish(0);
+        }
+        if(m_pump2::value()){
+            m_pump2::publish(0);
+        }
+    }else{
+
+        if(m_pwr_ign::value() != m_ignitionOld){
+            m_ignitionOld = m_pwr_ign::value();
+
+            if(!m_pwr_ign::value() && m_pump2::value()){
+                m_pump2::publish(0);
+            }
+        }
+
+        if(m_algoritm::value() != m_algoritmOld){
+            m_algoritmOld = m_algoritm::value();
+
+            if(m_algoritm::value() && m_pump1::value()){
+                m_pump1::publish(0);
+            }
+        }
+
+        if(!m_algoritm::value()){
+            fuel_auto_control();
+        }else{
+            fuel_manual_control();
+        }
+    }
+
+    msg[0] = 0x31;
+    msg[2] = 0x06;
+    msg[1] = m_sensRequest ? ADR_SENS1 : ADR_SENS2;
+    msg[3] = calcCrc(msg, 3);
+    send(port_id_fuel, msg, 4, true);
+
+    m_sensRequest = !m_sensRequest;
 }
 
 EXPORT void on_serial_fuel(const uint8_t *data, size_t size)
@@ -715,10 +770,10 @@ EXPORT void on_serial_fuel(const uint8_t *data, size_t size)
     }
 }
 
-//---------------------------------------------------------------
+// ============================= MAIN ================================
 int main()
 {
-    //frame_length = 0; ???
+    //frame_length = 0; unused ???
     
     //throttle
     m_pwr_ign(); //subscribe
@@ -729,7 +784,7 @@ int main()
 
     
     //fuel
-    m_mov_avg();
+    m_mov_avg(); //subscribe
     m_fuel_litr();
     m_fuel_perc();
     m_fuel_v1();
@@ -741,8 +796,17 @@ int main()
     m_warn_answer2();
     m_ers();
     m_algorithm();  // 0 - fuel auto control, 1 - fuel manual control
+
+    m_pump1::publish(0);
+    m_pump2::publish(0);
+    m_algorithm::publish(0);
+    startTimerPumpON = time_ms();
+
     task("on_task_fuel", DELAY_MS);
     receive(port_id_fuel, "on_serial_fuel");
+
+    m_fuel_v1::publish(32.0);
+    m_fuel_v2::publish(32.0);
 
     return 0;
 }
