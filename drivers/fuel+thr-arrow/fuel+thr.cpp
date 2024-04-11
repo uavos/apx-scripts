@@ -796,6 +796,7 @@ int main()
     m_warn_answer2();
     m_ers();
     m_algorithm();  // 0 - fuel auto control, 1 - fuel manual control
+    m_ctr_elevator();
 
     m_pump1::publish((uint32_t)0);
     m_pump2::publish((uint32_t)0);
