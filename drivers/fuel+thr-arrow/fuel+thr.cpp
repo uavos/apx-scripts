@@ -149,7 +149,7 @@ using m_fuel_v1 = Mandala<mandala::est::env::usr::u6>;
 using m_fuel_v2 = Mandala<mandala::est::env::usr::u7>;
 using m_fuel_ratio = Mandala<mandala::est::env::usr::u3>;
 
-using m_pump1 = Mandala<mandala::est::env::usrb::b2>;
+using m_pump1 = Mandala<mandala::ctr::nav::eng::fpump>;
 using m_pump2 = Mandala<mandala::est::env::usrb::b3>;
 
 using m_warn_answer1 = Mandala<mandala::est::env::usrb::b4>;
@@ -674,17 +674,6 @@ void fuel_auto_control()
         m_pump1::publish((uint32_t)0);
       }
     }
-
-    //check answer time from sensor
-    if(m_timeAns1+TIME_SA*1000 < localTime)
-        m_warn_answer1::publish((uint32_t)1);
-    else
-        m_warn_answer1::publish((uint32_t)0);
-
-    if(m_timeAns2+TIME_SA*1000 < localTime)
-        m_warn_answer2::publish((uint32_t)1);
-    else
-        m_warn_answer2::publish((uint32_t)0);
 }
 
 EXPORT void on_task_fuel()
@@ -700,6 +689,17 @@ EXPORT void on_task_fuel()
         m_fuel_v1::publish((float) m_fuel_v1::value() - 0.1f);
         m_fuel_v2::publish((float) m_fuel_v2::value() + 0.1f);
     }
+
+    //check answer time from sensor
+    if(m_timeAns1+TIME_SA*1000 < time_ms())
+        m_warn_answer1::publish((uint32_t)1);
+    else
+        m_warn_answer1::publish((uint32_t)0);
+
+    if(m_timeAns2+TIME_SA*1000 < time_ms())
+        m_warn_answer2::publish((uint32_t)1);
+    else
+        m_warn_answer2::publish((uint32_t)0);
 
     moving_average();
 
@@ -800,6 +800,8 @@ int main()
 
     m_pump1::publish((uint32_t)0);
     m_pump2::publish((uint32_t)0);
+    m_warn_answer1::publish((uint32_t)0);
+    m_warn_answer2::publish((uint32_t)0);
     m_algorithm::publish((uint32_t)0);
     startTimerPumpON = time_ms();
 
