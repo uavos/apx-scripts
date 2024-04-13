@@ -77,6 +77,7 @@ VESC_CAN_Data gen_data{};
 #define MCELL_PACK3 MCELL_ID + 3
 #define MCELL_PACK4 MCELL_ID + 4
 
+#pragma pack(1)
 struct CELL
 {
     int16_t c1;
@@ -84,7 +85,6 @@ struct CELL
     int16_t c3;
     int16_t c4;
 };
-
 struct MCELL
 {
     struct
@@ -99,9 +99,9 @@ struct MCELL
     CELL MSG4;
     CELL MSG5;
 };
+#pragma pack()
 
-MCELL _mcel = {};
-
+MCELL _mcel{};
 //-------------------------------------------------------------------------------------
 
 //UVHPU
@@ -112,6 +112,43 @@ MCELL _mcel = {};
 #define UVHPU_PACK3 UVHPU_ID + 3
 #define UVHPU_PACK4 UVHPU_ID + 4
 #define UVHPU_PACK5 UVHPU_ID + 5
+
+#pragma pack(1)
+struct UVHPU
+{
+    struct
+    {
+        float vbat{0.f};
+        float ibat{0.f};
+        float imon{0.f};
+    } MSG1;
+    struct
+    {
+        float vout{0.f};
+        float tbat{0.f};
+        float pbat{0.f};
+        uint8_t status{0};
+    } MSG2;
+    struct
+    {
+        float cbat{0.f};
+        float ebat{0.f};
+    } MSG3;
+    struct
+    {
+        float res_bar{0.f};
+        float v_res{0.f};
+    } MSG4;
+    struct
+    {
+        float ibat_filt{0.f};
+        float vbat_filt{0.f};
+    } MSG5;
+};
+#pragma pack()
+
+UVHPU _uvhpu{};
+
 //-------------------------------------------------------------------------------------
 
 //Gill
@@ -219,6 +256,7 @@ float deserializeFloat2B(uint8_t b0, uint8_t b1)
 
     return sign * (i + f * 0.01f);
 }
+
 //-------------------------------------------------------------------------------------
 
 void ECUDemandRequest(uint8_t);
@@ -558,7 +596,48 @@ void processMCELLPackage(const uint32_t &can_id, const uint8_t *data)
     }
 }
 
-void processUVHPUackage(const uint32_t &can_id, const uint8_t *data) {}
+void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
+{
+    switch (can_id) {
+    case UVHPU_PACK1: {
+        _uvhpu.MSG1.vbat = deserializeFloat2B(data[0], data[1]);
+        memcpy(&_uvhpu.MSG1.ibat, data + 2, 4);
+        _uvhpu.MSG1.imon = int16_t(data[6] | (data[7] << 8)) / 100.f;
+        //printf("vbat %.2f", _uvhpu.MSG1.vbat);
+        //printf("ibat %.2f", _uvhpu.MSG1.ibat);
+        //printf("imon %.2f", _uvhpu.MSG1.imon);
+        break;
+    }
+    case UVHPU_PACK2: {
+        _uvhpu.MSG2.vout = deserializeFloat2B(data[0], data[1]);
+        _uvhpu.MSG2.tbat = deserializeFloat2B(data[2], data[3]);
+        _uvhpu.MSG2.pbat = int16_t(data[4] | (data[5] << 8));
+        _uvhpu.MSG2.status = data[6];
+        //printf("vout %.2f", _uvhpu.MSG2.vout);
+        //printf("tbat %.2f", _uvhpu.MSG2.tbat);
+        //printf("pbat %.2f", _uvhpu.MSG2.pbat);
+        break;
+    }
+    case UVHPU_PACK3: {
+        memcpy(&_uvhpu.MSG3.cbat, data, 8);
+        //printf("cbat %.2f", _uvhpu.MSG3.cbat);
+        //printf("ebat %.2f", _uvhpu.MSG3.ebat);
+        break;
+    }
+    case UVHPU_PACK4: {
+        memcpy(&_uvhpu.MSG4.res_bar, data, 8);
+        //printf("res_bar %.2f", _uvhpu.MSG4.res_bar);
+        //printf("v_res %.2f", _uvhpu.MSG4.v_res);
+        break;
+    }
+    case UVHPU_PACK5: {
+        memcpy(&_uvhpu.MSG5.ibat_filt, data, 8);
+        //printf("ibat_filt %.2f", _uvhpu.MSG5.ibat_filt);
+        //printf("vbat_filt %.2f", _uvhpu.MSG5.vbat_filt);
+        break;
+    }
+    }
+}
 
 EXPORT void on_can_aux(const uint8_t *data, size_t size)
 {
