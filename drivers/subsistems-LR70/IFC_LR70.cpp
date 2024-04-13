@@ -69,6 +69,51 @@ VESC_CAN_Data gen_data{};
 #define ECU_STATUS_ID 0x063C
 //-------------------------------------------------------------------------------------
 
+//MCELL
+//-------------------------------------------------------------------------------------
+#define MCELL_ID 0x0100
+#define MCELL_PACK1 MCELL_ID + 1
+#define MCELL_PACK2 MCELL_ID + 2
+#define MCELL_PACK3 MCELL_ID + 3
+#define MCELL_PACK4 MCELL_ID + 4
+
+struct CELL
+{
+    int16_t c1;
+    int16_t c2;
+    int16_t c3;
+    int16_t c4;
+};
+
+struct MCELL
+{
+    struct
+    {
+        float v_bat{0.f};
+        float t_bat{0.f};
+        float t_pcb{0.f};
+        uint8_t state{0};
+    } MSG1;
+    CELL MSG2;
+    CELL MSG3;
+    CELL MSG4;
+    CELL MSG5;
+};
+
+MCELL _mcel = {};
+
+//-------------------------------------------------------------------------------------
+
+//UVHPU
+//-------------------------------------------------------------------------------------
+#define UVHPU_ID 0x80
+#define UVHPU_PACK1 UVHPU_ID + 1
+#define UVHPU_PACK2 UVHPU_ID + 2
+#define UVHPU_PACK3 UVHPU_ID + 3
+#define UVHPU_PACK4 UVHPU_ID + 4
+#define UVHPU_PACK5 UVHPU_ID + 5
+//-------------------------------------------------------------------------------------
+
 //Gill
 using m_gill_fuel = Mandala<mandala::sns::env::fuel::level>;
 
@@ -165,6 +210,15 @@ void serializeInt(uint8_t *data, uint8_t index, int32_t value)
         data[index + i] = (value >> shift) & 0xFF;
     }
 }
+
+float deserializeFloat2B(uint8_t b0, uint8_t b1)
+{
+    float sign = (b0 & 0x80 || b1 & 0x80) ? -1.f : 1.f;
+    float i = b0 & 0x80 ? 0x100 - b0 : b0;
+    float f = b1 & 0x80 ? 0x100 - b1 : b1;
+
+    return sign * (i + f * 0.01f);
+}
 //-------------------------------------------------------------------------------------
 
 void ECUDemandRequest(uint8_t);
@@ -180,7 +234,7 @@ int main()
     receive(port_gill_id, "on_serial_gill"); //1 Hz
     receive(port_fan_id, "on_serial_fan");   //30 Hz
     receive(port_agl_id, "on_serial_agl");   //100 Hz
-    receive(port_aux_id, "on_can_aux");      //ECU 60Hz | TAIL 20Hz | GEN 20Hz
+    receive(port_aux_id, "on_can_aux");      //ECU 60Hz | TAIL 20Hz | GEN 20Hz | MCELL 30Hz | UVHPU 50Hz
 
     task("on_request_gill", 1000);
     task("on_start_eng", 100);
@@ -455,6 +509,57 @@ void processECUPackage(const uint32_t &can_id, const uint8_t *data)
     }
 }
 
+void processMCELLPackage(const uint32_t &can_id, const uint8_t *data)
+{
+    switch (can_id) {
+    case MCELL_PACK1: {
+        _mcel.MSG1.v_bat = deserializeFloat2B(data[0], data[1]);
+        _mcel.MSG1.t_bat = deserializeFloat2B(data[2], data[3]);
+        _mcel.MSG1.t_pcb = deserializeFloat2B(data[4], data[5]);
+        _mcel.MSG1.state = data[6];
+        /*
+        printf("v_bat %.2f", _mcel.MSG1.v_bat);
+        printf("t_bat %.2f", _mcel.MSG1.t_bat);
+        printf("t_pcb %.2f", _mcel.MSG1.t_pcp);
+        printf("state %u", _mcel.MSG1.state);
+        */
+        break;
+    }
+    case MCELL_PACK2: {
+        memcpy(&_mcel.MSG2.c1, data, 8);
+        /*
+        printf("C[0] %.2f", _mcel.MSG2.c1 / 1000.f);
+        printf("C[1] %.2f", _mcel.MSG2.c2 / 1000.f);
+        printf("C[2] %.2f", _mcel.MSG2.c3 / 1000.f);
+        printf("C[3] %.2f", _mcel.MSG2.c4 / 1000.f);
+        */
+        break;
+    }
+    case MCELL_PACK3: {
+        memcpy(&_mcel.MSG3.c1, data, 8);
+        /*
+        printf("C[4] %.2f", _mcel.MSG3.c1 / 1000.f);
+        printf("C[5] %.2f", _mcel.MSG3.c2 / 1000.f);
+        printf("C[6] %.2f", _mcel.MSG3.c3 / 1000.f);
+        printf("C[7] %.2f", _mcel.MSG3.c4 / 1000.f);
+        */
+        break;
+    }
+    case MCELL_PACK4: {
+        memcpy(&_mcel.MSG4.c1, data, 8);
+        /*
+        printf("C[8] %.2f", _mcel.MSG4.c1 / 1000.f);
+        printf("C[9] %.2f", _mcel.MSG4.c2 / 1000.f);
+        printf("C[10] %.2f", _mcel.MSG4.c3 / 1000.f);
+        printf("C[11] %.2f", _mcel.MSG4.c4 / 1000.f);
+        */
+        break;
+    }
+    }
+}
+
+void processUVHPUackage(const uint32_t &can_id, const uint8_t *data) {}
+
 EXPORT void on_can_aux(const uint8_t *data, size_t size)
 {
     if (size != PACK_SIZE_CAN) {
@@ -472,7 +577,7 @@ EXPORT void on_can_aux(const uint8_t *data, size_t size)
     //CAN ID 0xFF
     switch (can_id & 0xFF) {
     case VESC_TAIL_ID: {
-        //printf("Vesc tail %u", can_id);
+        //printf("vesc tail %u", can_id);
         uint16_t msg_id = (can_id >> 8) & 0xFF;
         processVESCPackage(msg_id, can_data, &tail_data);
 
@@ -486,7 +591,7 @@ EXPORT void on_can_aux(const uint8_t *data, size_t size)
         break;
     }
     case VESC_GEN_ID: {
-        //printf("Vesc gen %u", can_id);
+        //printf("vesc gen %u", can_id);
         uint16_t msg_id = (can_id >> 8) & 0xFF;
         processVESCPackage(msg_id, can_data, &gen_data);
 
@@ -506,8 +611,25 @@ EXPORT void on_can_aux(const uint8_t *data, size_t size)
     case ECU_MAS_ID:
     case ECU_FSP_ID:
     case ECU_STATUS_ID: {
-        //printf("Vesc ecu %u", can_id);
+        //printf("ecu %u", can_id);
         processECUPackage(can_id, can_data);
+        break;
+    }
+    case MCELL_PACK1:
+    case MCELL_PACK2:
+    case MCELL_PACK3:
+    case MCELL_PACK4: {
+        //printf("mcell %u", can_id);
+        processMCELLPackage(can_id, can_data);
+        break;
+    }
+    case UVHPU_PACK1:
+    case UVHPU_PACK2:
+    case UVHPU_PACK3:
+    case UVHPU_PACK4:
+    case UVHPU_PACK5: {
+        //printf("uvhpu %u", can_id);
+        processUVHPUackage(can_id, can_data);
         break;
     }
     }
