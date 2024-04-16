@@ -23,6 +23,16 @@ struct FAN_VCP_Data
 uint8_t fan_tbuf[PACK_SIZE_FAN] = {};
 
 FAN_VCP_Data fan_data{};
+
+const float FAN_PWM_MIN{0.1f};
+const float FAN_PWM_MAX{1.f};
+
+const float TEMP_FAN_OFF{60.f};
+const float TEMP_MIN{110.f};
+const float TEMP_MAX{140.f};
+
+bool FIRST_ON_FAN{};
+uint32_t fan_last_time{};
 //-------------------------------------------------------------------------------------
 
 //VESC
@@ -44,7 +54,7 @@ struct VESC_CAN_Data
     float current;               //MSG1
     float duty;                  //MSG1
     uint32_t apm_hours;          //MSG2
-    uint32_t apm_hours_charged;  //MSG1
+    uint32_t apm_hours_charged;  //MSG2
     uint32_t watt_hours;         //MSG3
     uint32_t watt_hours_charged; //MSG3
     float temp_fet;              //MSG4
@@ -62,11 +72,31 @@ VESC_CAN_Data gen_data{};
 //ECU
 //-------------------------------------------------------------------------------------
 #define ECU_COMM_ID 0x80
+#define ECU_ENG_STOP 0x01
+#define ECU_PUMP_SWITCH 0x02
+#define ECU_ENG_DEMOND 0x03
+
 #define ECU_CTRL_ID 0x060A
 #define ECU_TCP_ID 0x0614
 #define ECU_MAS_ID 0x061E
 #define ECU_FSP_ID 0x0632
-#define ECU_STATUS_ID 0x063C
+#define ECU_STATUS_ID 0x063
+
+enum PUMP {
+    PUMP1 = 0,
+    PUMP2 = 1,
+};
+
+struct ECU
+{
+    uint16_t cht1;
+    uint16_t cht2;
+
+    uint16_t max_cht() { return cht1 > cht2 ? cht1 : cht2; }
+};
+
+ECU _ecu{};
+
 //-------------------------------------------------------------------------------------
 
 //MCELL
@@ -78,26 +108,14 @@ VESC_CAN_Data gen_data{};
 #define MCELL_PACK4 MCELL_ID + 4
 
 #pragma pack(1)
-struct CELL
-{
-    int16_t c1;
-    int16_t c2;
-    int16_t c3;
-    int16_t c4;
-};
 struct MCELL
 {
-    struct
-    {
-        float v_bat{0.f};
-        float t_bat{0.f};
-        float t_pcb{0.f};
-        uint8_t state{0};
-    } MSG1;
-    CELL MSG2;
-    CELL MSG3;
-    CELL MSG4;
-    CELL MSG5;
+    float v_bat;
+    float t_bat;
+    float t_pcb;
+    uint8_t state;
+    int16_t cell[12] = {};
+    float cell_volt(uint8_t cell_idx) { return cell[cell_idx] / 1000.f; };
 };
 #pragma pack()
 
@@ -112,38 +130,50 @@ MCELL _mcel{};
 #define UVHPU_PACK3 UVHPU_ID + 3
 #define UVHPU_PACK4 UVHPU_ID + 4
 #define UVHPU_PACK5 UVHPU_ID + 5
+#define UVHPU_PACK6 UVHPU_ID + 6
+#define UVHPU_PACK7 UVHPU_ID + 7
 
 #pragma pack(1)
 struct UVHPU
 {
     struct
     {
-        float vbat{0.f};
-        float ibat{0.f};
-        float imon{0.f};
+        float vbat;
+        float ibat;
+        float imon;
     } MSG1;
     struct
     {
-        float vout{0.f};
-        float tbat{0.f};
-        float pbat{0.f};
-        uint8_t status{0};
+        float vout;
+        float tbat;
+        float pbat;
+        float status;
     } MSG2;
     struct
     {
-        float cbat{0.f};
-        float ebat{0.f};
+        float cbat;
+        float ebat;
     } MSG3;
     struct
     {
-        float res_bar{0.f};
-        float v_res{0.f};
+        float res_bar;
+        float v_res;
     } MSG4;
     struct
     {
-        float ibat_filt{0.f};
-        float vbat_filt{0.f};
+        float ibat_filt;
+        float vbat_filt;
     } MSG5;
+    struct
+    {
+        float cbat_res;
+        float ebat_res;
+    } MSG6;
+    struct
+    {
+        int16_t life_cycles;
+        float cbat_mod;
+    } MSG7;
 };
 #pragma pack()
 
@@ -191,6 +221,7 @@ using m_ecu_baromeric_pressure = Mandala<mandala::est::env::usr::u7>;  // +
 using m_ecu_coolant_temp = Mandala<mandala::est::env::usr::u8>;        // +
 using m_ecu_fuel_pressure = Mandala<mandala::est::env::usr::u9>;       // +
 using m_ecu_fuel_consumotion = Mandala<mandala::est::env::usr::u10>;   // +
+using m_ecu_pump_speed = Mandala<mandala::est::env::usr::u12>;         // +
 
 using m_ecu_st_sns = Mandala<mandala::est::env::usrw::w11>; // +
 using m_ecu_st_act = Mandala<mandala::est::env::usrw::w12>; // +
@@ -201,6 +232,11 @@ using m_ecu_st_pump = Mandala<mandala::est::env::usrb::b7>; // +
 //Start ENG
 using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
 using m_eng_mode = Mandala<mandala::cmd::nav::eng::mode>;
+using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
+
+//Fan control
+using m_fan_control = Mandala<mandala::ctr::env::tune::t1>;
+
 bool start_eng{};
 uint32_t start_time_eng{};
 
@@ -248,43 +284,49 @@ void serializeInt(uint8_t *data, uint8_t index, int32_t value)
     }
 }
 
-float deserializeFloat2B(uint8_t b0, uint8_t b1)
+int16_t unpackInt16(const uint8_t *data, uint8_t index)
 {
-    float sign = (b0 & 0x80 || b1 & 0x80) ? -1.f : 1.f;
-    float i = b0 & 0x80 ? 0x100 - b0 : b0;
-    float f = b1 & 0x80 ? 0x100 - b1 : b1;
-
-    return sign * (i + f * 0.01f);
+    return (int16_t) (data[index] | (data[index + 1] << 8));
 }
 
 //-------------------------------------------------------------------------------------
 
-void ECUDemandRequest(uint8_t);
-void ECUEnableDisable(bool);
+void ECUEngineStop(bool);
+void ECUDemandControl(uint16_t);
+void ECUPumpSwitch(uint8_t);
+
 void setRPM(const uint8_t &, const int32_t &);
 void setCurrent(const uint8_t &, const float &);
 
 int main()
 {
-    ECUDemandRequest(0);     // 0% throttle
-    ECUEnableDisable(false); // Ignition OFF
+    ECUDemandControl(0);
+    ECUPumpSwitch(PUMP1);
 
     receive(port_gill_id, "on_serial_gill"); //1 Hz
     receive(port_fan_id, "on_serial_fan");   //30 Hz
     receive(port_agl_id, "on_serial_agl");   //100 Hz
     receive(port_aux_id, "on_can_aux");      //ECU 60Hz | TAIL 20Hz | GEN 20Hz | MCELL 30Hz | UVHPU 50Hz
 
-    task("on_request_gill", 1000);
+    task("on_task", 1000); //request GILL and FAN control
     task("on_start_eng", 100);
+
+    m_pwr_ign("on_pwr_ign");
 
     m_pwr_ign(); //subscribe
     m_eng_mode();
+    m_eng_ctr();
 
-    start_time_eng = time_ms();
+    start_time_eng = fan_last_time = time_ms();
 
     printf("IFC Script ready...");
 
     return 0;
+}
+
+EXPORT void on_pwr_ign()
+{
+    ECUEngineStop((bool) m_pwr_ign::value());
 }
 
 EXPORT void on_start_eng()
@@ -294,6 +336,10 @@ EXPORT void on_start_eng()
         m_eng_mode::publish((uint32_t) mandala::eng_mode_auto);
         start_eng = false;
         return;
+    }
+
+    if (on_power_ignition) {
+        ECUDemandControl(uint16_t(m_eng_ctr::value() * 1000.f));
     }
 
     if (on_power_ignition && !start_eng && (uint32_t) m_eng_mode::value() == mandala::eng_mode_start) {
@@ -313,13 +359,45 @@ EXPORT void on_start_eng()
 }
 
 uint32_t count_fr{0};
-EXPORT void on_request_gill()
+EXPORT void on_task()
 {
     //printf("Aux CAN Hz %u", count_fr);
     //count_fr = 0;
 
     const uint8_t tbuf[] = {0x41, 0x0d};
     send(port_gill_id, tbuf, sizeof(tbuf), false);
+
+    uint32_t time_now = time_ms();
+
+    float max_cht = _ecu.max_cht();
+    float fan_k{};
+    float fan_cmd{};
+
+    if (max_cht > TEMP_FAN_OFF) {
+        fan_k = (max_cht - TEMP_MIN) / (TEMP_MAX - TEMP_MIN);
+        if (fan_k > 1.f)
+            fan_k = 1.f;
+        if (fan_k < 0.f)
+            fan_k = 0.f;
+        fan_cmd = (FAN_PWM_MAX - FAN_PWM_MIN) * fan_k + FAN_PWM_MIN;
+    }
+
+    if (max_cht < (TEMP_FAN_OFF - 5.f)) {
+        fan_cmd = 0.f;
+        FIRST_ON_FAN = false;
+    }
+
+    //check first on
+    if (fan_cmd > 0.f && !FIRST_ON_FAN) {
+        FIRST_ON_FAN = true;
+        fan_cmd = 0.6f;
+    } else if (!FIRST_ON_FAN) {
+        fan_last_time = time_now;
+    } else if (FIRST_ON_FAN && (time_now - fan_last_time) < 10000) {
+        fan_cmd = 0.6f;
+    }
+
+    m_fan_control::publish(fan_cmd);
 }
 
 EXPORT void on_serial_gill(const uint8_t *data, size_t size)
@@ -453,26 +531,35 @@ void processVESCPackage(const uint32_t &msg_id, const uint8_t *data, VESC_CAN_Da
     }
 }
 
-void ECUEnableDisable(bool cmd_enable)
+void ECUEngineStop(bool cmd_enable)
 {
-    uint8_t msg[4 + 8] = {}; // ext id + DATA
+    uint8_t msg[4 + 8] = {}; // id + DATA
 
     msg[0] = ECU_COMM_ID;
-    msg[3] |= 0x80; // IDE (bit 7) 1=ext,0=std
-    msg[4] = 0x01;
+    msg[4] = ECU_ENG_STOP;
     msg[11] = cmd_enable;
     send(port_aux_id, msg, 12, false);
 }
 
-void ECUDemandRequest(uint8_t cmd_rpm)
+void ECUPumpSwitch(uint8_t n_pump)
 {
-    uint8_t msg[4 + 8] = {}; // ext id + DATA
+    uint8_t msg[4 + 8] = {}; // id + DATA
 
     msg[0] = ECU_COMM_ID;
-    msg[3] |= 0x80; // IDE (bit 7) 1=ext,0=std
-    msg[4] = 0x02;
-    msg[10] = cmd_rpm >> 8;
-    msg[11] = cmd_rpm;
+    msg[4] = ECU_PUMP_SWITCH;
+    msg[11] = n_pump;
+    send(port_aux_id, msg, 12, false);
+}
+
+void ECUDemandControl(uint16_t cmd_control)
+{
+    uint8_t msg[4 + 8] = {}; // id + DATA
+
+    msg[0] = ECU_COMM_ID;
+    msg[4] = ECU_ENG_DEMOND;
+    msg[9] = 0x01; //Enable CAN control
+    msg[10] = cmd_control >> 8;
+    msg[11] = (uint8_t) cmd_control;
     send(port_aux_id, msg, 12, false);
 }
 
@@ -499,6 +586,10 @@ void processECUPackage(const uint32_t &can_id, const uint8_t *data)
         m_ecu_cylinder_head_temp2::publish((float) cylinder_head_temp2);
         m_ecu_egt1::publish((uint32_t) egt1);
         m_ecu_egt2::publish((uint32_t) egt2);
+
+        _ecu.cht1 = cylinder_head_temp1;
+        _ecu.cht2 = cylinder_head_temp2;
+
         break;
     }
     case ECU_MAS_ID: {
@@ -513,10 +604,11 @@ void processECUPackage(const uint32_t &can_id, const uint8_t *data)
         break;
     }
     case ECU_FSP_ID: {
-        //uint16_t pump_speed = uint16_t((data[6] << 8) | data[7]);
+        uint16_t pump_speed = uint16_t((data[6] << 8) | data[7]);
         uint16_t fuel_pressure = uint16_t((data[4] << 8) | data[5]);
         uint16_t fuel_consumotion = uint16_t((data[3] << 8) | data[2]);
 
+        m_ecu_pump_speed::publish((uint32_t) pump_speed);
         m_ecu_fuel_pressure::publish((float) fuel_pressure / 100.f);
         m_ecu_fuel_consumotion::publish((uint32_t) fuel_consumotion);
         break;
@@ -551,10 +643,10 @@ void processMCELLPackage(const uint32_t &can_id, const uint8_t *data)
 {
     switch (can_id) {
     case MCELL_PACK1: {
-        _mcel.MSG1.v_bat = deserializeFloat2B(data[0], data[1]);
-        _mcel.MSG1.t_bat = deserializeFloat2B(data[2], data[3]);
-        _mcel.MSG1.t_pcb = deserializeFloat2B(data[4], data[5]);
-        _mcel.MSG1.state = data[6];
+        _mcel.v_bat = (float) unpackInt16(data, 0) / 100.f;
+        _mcel.t_bat = (float) unpackInt16(data, 2) / 100.f;
+        _mcel.t_pcb = (float) unpackInt16(data, 4) / 100.f;
+        _mcel.state = data[7];
         /*
         printf("v_bat %.2f", _mcel.MSG1.v_bat);
         printf("t_bat %.2f", _mcel.MSG1.t_bat);
@@ -564,32 +656,32 @@ void processMCELLPackage(const uint32_t &can_id, const uint8_t *data)
         break;
     }
     case MCELL_PACK2: {
-        memcpy(&_mcel.MSG2.c1, data, 8);
+        memcpy(&_mcel.cell, data, 8);
         /*
-        printf("C[0] %.2f", _mcel.MSG2.c1 / 1000.f);
-        printf("C[1] %.2f", _mcel.MSG2.c2 / 1000.f);
-        printf("C[2] %.2f", _mcel.MSG2.c3 / 1000.f);
-        printf("C[3] %.2f", _mcel.MSG2.c4 / 1000.f);
+        printf("C[0] %.2f", _mcel.cell_volt(0));
+        printf("C[1] %.2f", _mcel.cell_volt(1));
+        printf("C[2] %.2f", _mcel.cell_volt(2));
+        printf("C[3] %.2f", _mcel.cell_volt(3));
         */
         break;
     }
     case MCELL_PACK3: {
-        memcpy(&_mcel.MSG3.c1, data, 8);
+        memcpy(&_mcel.cell + 4, data, 8);
         /*
-        printf("C[4] %.2f", _mcel.MSG3.c1 / 1000.f);
-        printf("C[5] %.2f", _mcel.MSG3.c2 / 1000.f);
-        printf("C[6] %.2f", _mcel.MSG3.c3 / 1000.f);
-        printf("C[7] %.2f", _mcel.MSG3.c4 / 1000.f);
+        printf("C[4] %.2f", _mcel.cell_volt(4));
+        printf("C[5] %.2f", _mcel.cell_volt(5));
+        printf("C[6] %.2f", _mcel.cell_volt(6));
+        printf("C[7] %.2f", _mcel.cell_volt(7));
         */
         break;
     }
     case MCELL_PACK4: {
-        memcpy(&_mcel.MSG4.c1, data, 8);
+        memcpy(&_mcel.cell + 8, data, 8);
         /*
-        printf("C[8] %.2f", _mcel.MSG4.c1 / 1000.f);
-        printf("C[9] %.2f", _mcel.MSG4.c2 / 1000.f);
-        printf("C[10] %.2f", _mcel.MSG4.c3 / 1000.f);
-        printf("C[11] %.2f", _mcel.MSG4.c4 / 1000.f);
+        printf("C[8] %.2f", _mcel.cell_volt(8));
+        printf("C[9] %.2f", _mcel.cell_volt(9));
+        printf("C[10] %.2f", _mcel.cell_volt(10));
+        printf("C[11] %.2f", _mcel.cell_volt(11));
         */
         break;
     }
@@ -600,19 +692,21 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
 {
     switch (can_id) {
     case UVHPU_PACK1: {
-        _uvhpu.MSG1.vbat = deserializeFloat2B(data[0], data[1]);
+        _uvhpu.MSG1.vbat = (float) unpackInt16(data, 0) / 100.f;
         memcpy(&_uvhpu.MSG1.ibat, data + 2, 4);
-        _uvhpu.MSG1.imon = int16_t(data[6] | (data[7] << 8)) / 100.f;
+        _uvhpu.MSG1.imon = (float) unpackInt16(data, 6) / 100.f;
+
         //printf("vbat %.2f", _uvhpu.MSG1.vbat);
         //printf("ibat %.2f", _uvhpu.MSG1.ibat);
         //printf("imon %.2f", _uvhpu.MSG1.imon);
         break;
     }
     case UVHPU_PACK2: {
-        _uvhpu.MSG2.vout = deserializeFloat2B(data[0], data[1]);
-        _uvhpu.MSG2.tbat = deserializeFloat2B(data[2], data[3]);
-        _uvhpu.MSG2.pbat = int16_t(data[4] | (data[5] << 8));
-        _uvhpu.MSG2.status = data[6];
+        _uvhpu.MSG2.vout = (float) unpackInt16(data, 0) / 100.f;
+        _uvhpu.MSG2.tbat = (float) unpackInt16(data, 2) / 100.f;
+        _uvhpu.MSG2.pbat = (float) unpackInt16(data, 4) / 100.f;
+        _uvhpu.MSG2.status = data[7];
+
         //printf("vout %.2f", _uvhpu.MSG2.vout);
         //printf("tbat %.2f", _uvhpu.MSG2.tbat);
         //printf("pbat %.2f", _uvhpu.MSG2.pbat);
@@ -620,20 +714,32 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
     }
     case UVHPU_PACK3: {
         memcpy(&_uvhpu.MSG3.cbat, data, 8);
+
         //printf("cbat %.2f", _uvhpu.MSG3.cbat);
         //printf("ebat %.2f", _uvhpu.MSG3.ebat);
         break;
     }
     case UVHPU_PACK4: {
         memcpy(&_uvhpu.MSG4.res_bar, data, 8);
+
         //printf("res_bar %.2f", _uvhpu.MSG4.res_bar);
         //printf("v_res %.2f", _uvhpu.MSG4.v_res);
         break;
     }
     case UVHPU_PACK5: {
         memcpy(&_uvhpu.MSG5.ibat_filt, data, 8);
+
         //printf("ibat_filt %.2f", _uvhpu.MSG5.ibat_filt);
         //printf("vbat_filt %.2f", _uvhpu.MSG5.vbat_filt);
+        break;
+    }
+    case UVHPU_PACK6: {
+        memcpy(&_uvhpu.MSG6.cbat_res, data, 8);
+        break;
+    }
+    case UVHPU_PACK7: {
+        _uvhpu.MSG7.life_cycles = unpackInt16(data, 0);
+        memcpy(&_uvhpu.MSG7.cbat_mod, data + 2, 4);
         break;
     }
     }
@@ -706,7 +812,9 @@ EXPORT void on_can_aux(const uint8_t *data, size_t size)
     case UVHPU_PACK2:
     case UVHPU_PACK3:
     case UVHPU_PACK4:
-    case UVHPU_PACK5: {
+    case UVHPU_PACK5:
+    case UVHPU_PACK6:
+    case UVHPU_PACK7: {
         //printf("uvhpu %u", can_id);
         processUVHPUackage(can_id, can_data);
         break;
