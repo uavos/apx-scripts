@@ -603,11 +603,6 @@ void fuel_auto_control()
 {
     uint32_t localTime = time_ms();
 
-    if(m_vFuelPersent2 < 1.0f)
-      m_vFuelPersent2 = 1.0f;
-
-    m_fuel_ratio::publish(m_vFuelPersent1 / m_vFuelPersent2);
-
     if(m_vFuelPersent2 > P2_TANK2 && !(bool)m_pump1::value()) {
       pump_stage = 1;
       kf_start = KF2_RATIO;
@@ -705,6 +700,10 @@ EXPORT void on_task_fuel()
 
     m_vFuelPersent1 = m_fuel_v1::value() * 100.0f / V_MAX;
     m_vFuelPersent2 = m_fuel_v2::value() * 100.0f / V_MAX;
+
+    if(m_vFuelPersent2 < 1.0f)
+        m_vFuelPersent2 = 1.0f;
+    m_fuel_ratio::publish(m_vFuelPersent1 / m_vFuelPersent2);
 
     m_fuel_litr::publish(m_fuel_v1::value() + m_fuel_v2::value());
 
