@@ -721,6 +721,8 @@ EXPORT void on_task_fuel()
 
             if(!(bool)m_pwr_ign::value() && (bool)m_pump2::value()){
                 m_pump2::publish((uint32_t)0);
+            } else if((bool)m_pwr_ign::value() && !(bool)m_pump2::value()) {
+                m_pump2::publish((uint32_t)1);
             }
         }
 
