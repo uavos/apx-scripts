@@ -82,11 +82,6 @@ VESC_CAN_Data gen_data{};
 #define ECU_FSP_ID 0x0632
 #define ECU_STATUS_ID 0x063
 
-enum PUMP {
-    PUMP1 = 0,
-    PUMP2 = 1,
-};
-
 struct ECU
 {
     uint16_t cht1;
@@ -229,6 +224,15 @@ using m_ecu_st_eng = Mandala<mandala::est::env::usrw::w13>; // +
 using m_ecu_st_fl = Mandala<mandala::est::env::usrw::w14>;  // +
 using m_ecu_st_pump = Mandala<mandala::est::env::usrb::b7>; // +
 
+//Mcell
+using m_mcel_vbat = Mandala<mandala::est::env::usr::u13>;  // +
+using m_mcel_tbat = Mandala<mandala::est::env::usr::u14>;  // +
+using m_mcel_state = Mandala<mandala::est::env::usrb::b1>; // +
+
+//Uvhpy
+using m_uvhpy_status = Mandala<mandala::est::env::usrb::b2>;     // +
+using m_uvhpy_ibat_filt = Mandala<mandala::est::env::usrf::f13>; // +
+
 //Start ENG
 using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
 using m_eng_mode = Mandala<mandala::cmd::nav::eng::mode>;
@@ -236,6 +240,9 @@ using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
 
 //Fan control
 using m_fan_control = Mandala<mandala::ctr::env::tune::t1>;
+
+//SW pump
+using m_sw_pump = Mandala<mandala::ctr::env::sw::sw2>;
 
 bool start_eng{};
 uint32_t start_time_eng{};
@@ -301,17 +308,17 @@ void setCurrent(const uint8_t &, const float &);
 int main()
 {
     ECUDemandControl(0);
-    ECUPumpSwitch(PUMP1);
 
     receive(port_gill_id, "on_serial_gill"); //1 Hz
     receive(port_fan_id, "on_serial_fan");   //30 Hz
     receive(port_agl_id, "on_serial_agl");   //100 Hz
     receive(port_aux_id, "on_can_aux");      //ECU 60Hz | TAIL 20Hz | GEN 20Hz | MCELL 30Hz | UVHPU 50Hz
 
-    task("on_task", 1000); //request GILL and FAN control
+    task("on_task", 500); //request GILL and FAN control
     task("on_start_eng", 100);
 
     m_pwr_ign("on_pwr_ign");
+    m_sw_pump("on_sw_pump");
 
     m_pwr_ign(); //subscribe
     m_eng_mode();
@@ -326,20 +333,23 @@ int main()
 
 EXPORT void on_pwr_ign()
 {
-    ECUEngineStop((bool) m_pwr_ign::value());
+    //ECUEngineStop((bool) m_pwr_ign::value());
+}
+
+EXPORT void on_sw_pump()
+{
+    ECUPumpSwitch((bool) m_sw_pump::value());
 }
 
 EXPORT void on_start_eng()
 {
+    ECUDemandControl(uint16_t((m_eng_ctr::value() * 0.9f + 0.1f) * 1000.f));
+
     bool on_power_ignition = (bool) m_pwr_ign::value();
     if ((uint32_t) m_eng_mode::value() == mandala::eng_mode_start && !on_power_ignition) {
         m_eng_mode::publish((uint32_t) mandala::eng_mode_auto);
         start_eng = false;
         return;
-    }
-
-    if (on_power_ignition) {
-        ECUDemandControl(uint16_t(m_eng_ctr::value() * 1000.f));
     }
 
     if (on_power_ignition && !start_eng && (uint32_t) m_eng_mode::value() == mandala::eng_mode_start) {
@@ -397,6 +407,7 @@ EXPORT void on_task()
         fan_cmd = 0.6f;
     }
 
+    //printf("fan_control %.2f", fan_cmd);
     m_fan_control::publish(fan_cmd);
 }
 
@@ -557,9 +568,10 @@ void ECUDemandControl(uint16_t cmd_control)
 
     msg[0] = ECU_COMM_ID;
     msg[4] = ECU_ENG_DEMOND;
-    msg[9] = 0x01; //Enable CAN control
+    //msg[9] = 0x01; //Enable CAN control
     msg[10] = cmd_control >> 8;
     msg[11] = (uint8_t) cmd_control;
+
     send(port_aux_id, msg, 12, false);
 }
 
@@ -647,41 +659,49 @@ void processMCELLPackage(const uint32_t &can_id, const uint8_t *data)
         _mcel.t_bat = (float) unpackInt16(data, 2) / 100.f;
         _mcel.t_pcb = (float) unpackInt16(data, 4) / 100.f;
         _mcel.state = data[7];
+
+        m_mcel_vbat::publish(_mcel.v_bat);
+        m_mcel_tbat::publish(_mcel.t_bat);
+        m_mcel_state::publish((uint32_t) _mcel.state);
+
         /*
-        printf("v_bat %.2f", _mcel.MSG1.v_bat);
-        printf("t_bat %.2f", _mcel.MSG1.t_bat);
-        printf("t_pcb %.2f", _mcel.MSG1.t_pcp);
-        printf("state %u", _mcel.MSG1.state);
+        printf("v_bat %.2f", _mcel.v_bat);      //+
+        printf("t_bat %.2f", _mcel.t_bat);      //+
+        printf("t_pcb %.2f", _mcel.t_pcb);
+        printf("state %u", _mcel.state);        //+
         */
+
         break;
     }
     case MCELL_PACK2: {
-        memcpy(&_mcel.cell, data, 8);
+        memcpy(_mcel.cell, data, 8);
         /*
-        printf("C[0] %.2f", _mcel.cell_volt(0));
-        printf("C[1] %.2f", _mcel.cell_volt(1));
-        printf("C[2] %.2f", _mcel.cell_volt(2));
-        printf("C[3] %.2f", _mcel.cell_volt(3));
+        printf("C[0] %.3f", _mcel.cell_volt(0));
+        printf("C[1] %.3f", _mcel.cell_volt(1));
+        printf("C[2] %.3f", _mcel.cell_volt(2));
+        printf("C[3] %.3f", _mcel.cell_volt(3));
         */
+
         break;
     }
     case MCELL_PACK3: {
-        memcpy(&_mcel.cell + 4, data, 8);
+        memcpy(_mcel.cell + 4, data, 8);
         /*
-        printf("C[4] %.2f", _mcel.cell_volt(4));
-        printf("C[5] %.2f", _mcel.cell_volt(5));
-        printf("C[6] %.2f", _mcel.cell_volt(6));
-        printf("C[7] %.2f", _mcel.cell_volt(7));
+        printf("C[4] %.3f", _mcel.cell_volt(4));
+        printf("C[5] %.3f", _mcel.cell_volt(5));
+        printf("C[6] %.3f", _mcel.cell_volt(6));
+        printf("C[7] %.3f", _mcel.cell_volt(7));
         */
+
         break;
     }
     case MCELL_PACK4: {
-        memcpy(&_mcel.cell + 8, data, 8);
+        memcpy(_mcel.cell + 8, data, 8);
         /*
-        printf("C[8] %.2f", _mcel.cell_volt(8));
-        printf("C[9] %.2f", _mcel.cell_volt(9));
-        printf("C[10] %.2f", _mcel.cell_volt(10));
-        printf("C[11] %.2f", _mcel.cell_volt(11));
+        printf("C[8] %.3f", _mcel.cell_volt(8));
+        printf("C[9] %.3f", _mcel.cell_volt(9));
+        printf("C[10] %.3f", _mcel.cell_volt(10));
+        printf("C[11] %.3f", _mcel.cell_volt(11));
         */
         break;
     }
@@ -696,6 +716,7 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
         memcpy(&_uvhpu.MSG1.ibat, data + 2, 4);
         _uvhpu.MSG1.imon = (float) unpackInt16(data, 6) / 100.f;
 
+        //printf("P1");
         //printf("vbat %.2f", _uvhpu.MSG1.vbat);
         //printf("ibat %.2f", _uvhpu.MSG1.ibat);
         //printf("imon %.2f", _uvhpu.MSG1.imon);
@@ -704,42 +725,65 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
     case UVHPU_PACK2: {
         _uvhpu.MSG2.vout = (float) unpackInt16(data, 0) / 100.f;
         _uvhpu.MSG2.tbat = (float) unpackInt16(data, 2) / 100.f;
-        _uvhpu.MSG2.pbat = (float) unpackInt16(data, 4) / 100.f;
+        _uvhpu.MSG2.pbat = (float) unpackInt16(data, 4);
         _uvhpu.MSG2.status = data[7];
 
+        m_uvhpy_status::publish(_uvhpu.MSG2.status);
+
+        //printf("P2");
         //printf("vout %.2f", _uvhpu.MSG2.vout);
         //printf("tbat %.2f", _uvhpu.MSG2.tbat);
         //printf("pbat %.2f", _uvhpu.MSG2.pbat);
+        //printf("status %u", _uvhpu.MSG2.status);      //+
+
         break;
     }
     case UVHPU_PACK3: {
         memcpy(&_uvhpu.MSG3.cbat, data, 8);
 
+        //printf("P3");
         //printf("cbat %.2f", _uvhpu.MSG3.cbat);
         //printf("ebat %.2f", _uvhpu.MSG3.ebat);
+
         break;
     }
     case UVHPU_PACK4: {
         memcpy(&_uvhpu.MSG4.res_bar, data, 8);
 
+        //printf("P4");
         //printf("res_bar %.2f", _uvhpu.MSG4.res_bar);
         //printf("v_res %.2f", _uvhpu.MSG4.v_res);
+
         break;
     }
     case UVHPU_PACK5: {
         memcpy(&_uvhpu.MSG5.ibat_filt, data, 8);
 
-        //printf("ibat_filt %.2f", _uvhpu.MSG5.ibat_filt);
+        m_uvhpy_ibat_filt::publish(_uvhpu.MSG5.ibat_filt);
+
+        //printf("P5");
+        //printf("ibat_filt %.2f", _uvhpu.MSG5.ibat_filt);        //+
         //printf("vbat_filt %.2f", _uvhpu.MSG5.vbat_filt);
+
         break;
     }
     case UVHPU_PACK6: {
         memcpy(&_uvhpu.MSG6.cbat_res, data, 8);
+
+        //printf("P6");
+        //printf("cbat_res %.2f", _uvhpu.MSG6.cbat_res);
+        //printf("ebat_res %.2f", _uvhpu.MSG6.ebat_res);
+
         break;
     }
     case UVHPU_PACK7: {
         _uvhpu.MSG7.life_cycles = unpackInt16(data, 0);
         memcpy(&_uvhpu.MSG7.cbat_mod, data + 2, 4);
+
+        //printf("P7");
+        //printf("life_cycles %u", _uvhpu.MSG7.life_cycles);
+        //printf("cbat_mod %.2f", _uvhpu.MSG7.cbat_mod);
+
         break;
     }
     }
