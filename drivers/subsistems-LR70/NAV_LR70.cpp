@@ -37,6 +37,7 @@ uint8_t act_sns{1};
 using m_rpm_front = Mandala<mandala::est::env::usrw::w1>;
 using m_rpm_near = Mandala<mandala::est::env::usrw::w2>;
 using m_rpm_ecu = Mandala<mandala::est::env::usrw::w3>;
+using m_act_rpm = Mandala<mandala::est::env::usrb::b3>;
 
 using m_sns_rpm = Mandala<mandala::sns::env::eng::rpm>;
 using m_sw_ecu = Mandala<mandala::ctr::env::sw::sw4>;
@@ -157,5 +158,6 @@ EXPORT void on_rpm()
     if (act_sns == 3)
         rpm = rpm3;
 
+    m_act_rpm::publish((uint32_t) act_sns);
     m_sns_rpm::publish(rpm);
 }
