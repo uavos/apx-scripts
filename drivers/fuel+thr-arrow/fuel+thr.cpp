@@ -175,8 +175,6 @@ uint32_t m_timeAns2 = 0;
 uint32_t m_timeDeltaPump1;
 bool m_timeDeltaPump1Active = 0;
 
-bool m_timePump1Active = 0;
-
 uint32_t startTimerPumpON = 0;
 bool m_start_pump1 = false;
 
@@ -637,7 +635,6 @@ void fuel_auto_control()
           m_timeDeltaPump1 = localTime;
         } else if(m_timeDeltaPump1 + TIME_HYST*1000 < localTime) {
           m_timeDeltaPump1Active = false;
-          m_timePump1Active = true;
           printf("VM:FP1 start:%.2f...\n", kf_start);
           m_pump1::publish((uint32_t)1);
         }
@@ -647,7 +644,7 @@ void fuel_auto_control()
     }
 
     //stop pump1
-    if(m_timePump1Active && (bool)m_pump1::value()) {
+    if((bool)m_pump1::value()) {
 
       bool stop_pump = false;
 
@@ -665,7 +662,6 @@ void fuel_auto_control()
 
       if(stop_pump) {
         printf("VM:FP1 stop:%.2f...\n", kf_stop);
-        m_timePump1Active = false;
         m_pump1::publish((uint32_t)0);
       }
     }
