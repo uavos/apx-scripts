@@ -80,7 +80,7 @@ VESC_CAN_Data gen_data{};
 #define ECU_TCP_ID 0x0614
 #define ECU_MAS_ID 0x061E
 #define ECU_FSP_ID 0x0632
-#define ECU_STATUS_ID 0x063
+#define ECU_STATUS_ID 0x063C
 
 struct ECU
 {
@@ -432,7 +432,7 @@ EXPORT void on_serial_gill(const uint8_t *data, size_t size)
     if (full > 0) {
         float fuel = (float) full * 0.0059642f - 0.333996f;
         //printf("GILL %.2f", fuel);
-        m_gill_fuel::publish(fuel);
+        m_gill_fuel::publish(fuel * 10);
     }
 }
 
@@ -622,7 +622,7 @@ void processECUPackage(const uint32_t &can_id, const uint8_t *data)
 
         m_ecu_pump_speed::publish((uint32_t) pump_speed);
         m_ecu_fuel_pressure::publish((float) fuel_pressure / 100.f);
-        m_ecu_fuel_consumotion::publish((uint32_t) fuel_consumotion);
+        m_ecu_fuel_consumotion::publish((float) fuel_consumotion / 100.f);
         break;
     }
     case ECU_STATUS_ID: {
@@ -820,14 +820,14 @@ EXPORT void on_can_aux(const uint8_t *data, size_t size)
         break;
     }
     case VESC_GEN_ID: {
-        //printf("vesc gen %u", can_id);
+        //printf("vesc gen %x", can_id);
         uint16_t msg_id = (can_id >> 8) & 0xFF;
         processVESCPackage(msg_id, can_data, &gen_data);
 
-        m_vesc_gen_rpm::publish((float) gen_data.rpm);
+        m_vesc_gen_rpm::publish((float) abs(gen_data.rpm));
         m_vesc_gen_fet_temp::publish(gen_data.temp_fet);
         m_vesc_gen_motor_temp::publish(gen_data.temp_mot);
-        m_vesc_gen_curr_in::publish(gen_data.curr_in);
+        m_vesc_gen_curr_in::publish(fabs(gen_data.curr_in));
 
         break;
     }
@@ -840,7 +840,7 @@ EXPORT void on_can_aux(const uint8_t *data, size_t size)
     case ECU_MAS_ID:
     case ECU_FSP_ID:
     case ECU_STATUS_ID: {
-        //printf("ecu %u", can_id);
+        //printf("ecu %x", can_id);
         processECUPackage(can_id, can_data);
         break;
     }
@@ -848,7 +848,7 @@ EXPORT void on_can_aux(const uint8_t *data, size_t size)
     case MCELL_PACK2:
     case MCELL_PACK3:
     case MCELL_PACK4: {
-        //printf("mcell %u", can_id);
+        //printf("mcell %x", can_id);
         processMCELLPackage(can_id, can_data);
         break;
     }
@@ -859,7 +859,7 @@ EXPORT void on_can_aux(const uint8_t *data, size_t size)
     case UVHPU_PACK5:
     case UVHPU_PACK6:
     case UVHPU_PACK7: {
-        //printf("uvhpu %u", can_id);
+        //printf("uvhpu %x", can_id);
         processUVHPUackage(can_id, can_data);
         break;
     }
