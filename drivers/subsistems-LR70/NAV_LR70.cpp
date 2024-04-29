@@ -34,17 +34,27 @@ float err_rpm3{};
 
 uint8_t act_sns{1};
 
-using m_rpm_front = Mandala<mandala::est::env::usrw::w1>;
-using m_rpm_near = Mandala<mandala::est::env::usrw::w2>;
-using m_rpm_ecu = Mandala<mandala::est::env::usrw::w3>;
-using m_act_rpm = Mandala<mandala::est::env::usrb::b3>;
+using m_rpm_front = Mandala<mandala::est::env::usrw::w9>;
+using m_rpm_near = Mandala<mandala::est::env::usrw::w10>;
+using m_rpm_ecu = Mandala<mandala::est::env::usrw::w11>;
+using m_act_rpm = Mandala<mandala::est::env::usrc::c7>;
 
 using m_sns_rpm = Mandala<mandala::sns::env::eng::rpm>;
-using m_sw_ecu = Mandala<mandala::ctr::env::sw::sw4>;
+using m_sw_ecu_rpm = Mandala<mandala::ctr::env::sw::sw4>;
 
 //UVHPD
 using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
-using m_sw_hold = Mandala<mandala::ctr::env::sw::sw1>;
+using m_on_hold = Mandala<mandala::est::env::usrb::b2>;
+
+//RC mode
+using m_rc_mode = Mandala<mandala::cmd::nav::rc::mode>;
+
+using m_t2 = Mandala<mandala::ctr::env::tune::t2>; //prop
+
+using m_rc_prop = Mandala<mandala::cmd::nav::rc::prop>;   //rc_prop
+using m_rc_roll = Mandala<mandala::cmd::nav::rc::roll>;   //rc_roll
+using m_rc_pitch = Mandala<mandala::cmd::nav::rc::pitch>; //rc_pitch
+using m_rc_yaw = Mandala<mandala::cmd::nav::rc::yaw>;     //rc_yaw
 
 enum {
     proc_mode_EMG = 0,
@@ -62,13 +72,18 @@ int main()
     m_rpm_front();
     m_rpm_near();
     m_rpm_ecu();
-    m_sw_ecu();
+    m_sw_ecu_rpm();
 
     m_mode();
+
+    m_rc_mode();
+    m_t2();
 
     m_gyro_temp("on_gyro_temp"); // subscribe `on changed` event
     task("on_rpm", 25);          // 40 Hz
     task("on_mode", 1000);       // 1 Hz
+
+    task("on_rc_mode", 10); // 100 Hz
 
     return 0;
 }
@@ -76,9 +91,9 @@ int main()
 EXPORT void on_mode()
 {
     if ((uint8_t) m_mode::value() == proc_mode_TAXI) {
-        m_sw_hold::publish(0u);
+        m_on_hold::publish(0u);
     } else {
-        m_sw_hold::publish(1u);
+        m_on_hold::publish(1u);
     }
 }
 
@@ -147,7 +162,7 @@ EXPORT void on_rpm()
             act_sns = 2; // E sensor active
     }
 
-    if ((bool) m_sw_ecu::value()) {
+    if ((bool) m_sw_ecu_rpm::value()) {
         act_sns = 3;
     }
 
@@ -160,4 +175,11 @@ EXPORT void on_rpm()
 
     m_act_rpm::publish((uint32_t) act_sns);
     m_sns_rpm::publish(rpm);
+}
+
+EXPORT void on_rc_mode()
+{
+    if ((uint32_t) m_rc_mode::value() == mandala::rc_mode_manual) {
+        m_rc_prop::publish(m_t2::value() * (-1.f));
+    }
 }
