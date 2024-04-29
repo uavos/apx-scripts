@@ -86,6 +86,8 @@ struct ECU
 {
     uint16_t cht1;
     uint16_t cht2;
+    uint16_t egt1;
+    uint16_t egt2;
 
     uint16_t max_cht() { return cht1 > cht2 ? cht1 : cht2; }
 };
@@ -108,7 +110,7 @@ struct MCELL
     float v_bat;
     float t_bat;
     float t_pcb;
-    uint8_t state;
+    uint8_t status;
     int16_t cell[12] = {};
     float cell_volt(uint8_t cell_idx) { return cell[cell_idx] / 1000.f; };
 };
@@ -177,75 +179,72 @@ UVHPU _uvhpu{};
 //-------------------------------------------------------------------------------------
 
 //Gill
-using m_gill_fuel = Mandala<mandala::sns::env::fuel::level>;
+using m_gill_fuel = Mandala<mandala::sns::env::fuel::level>; // +
 
 //Fan
-using m_fan_temp = Mandala<mandala::est::env::usrf::f3>;        // +
-using m_fan_voltage = Mandala<mandala::est::env::usrf::f4>;     // +
-using m_fan_current = Mandala<mandala::est::env::usrf::f5>;     // +
-using m_fan_consumption = Mandala<mandala::est::env::usrw::w6>; // +
-using m_fan_rpm = Mandala<mandala::est::env::usrw::w7>;         // +
+using m_fan_temp = Mandala<mandala::est::env::usr::u2>;         // +
+using m_fan_voltage = Mandala<mandala::est::env::usr::u3>;      // +
+using m_fan_current = Mandala<mandala::est::env::usr::u4>;      // +
+using m_fan_consumption = Mandala<mandala::est::env::usrx::x9>; // +
+using m_fan_rpm = Mandala<mandala::est::env::usrx::x10>;        // +
 
 //uLanding
-using m_agl = Mandala<mandala::est::env::usrf::f1>; // +
-using m_snr = Mandala<mandala::est::env::usrf::f2>; // +
+using m_agl = Mandala<mandala::est::env::usr::u1>; // +
+using m_snr = Mandala<mandala::est::env::usr::u9>; // +
 
 //Vesc tail
-using m_vesc_tail_rpm = Mandala<mandala::est::env::usrf::f6>;         // +
-using m_vesc_tail_current = Mandala<mandala::est::env::usrf::f7>;     // +
-using m_vesc_tail_duty = Mandala<mandala::est::env::usrf::f8>;        // +
-using m_vesc_tail_temp_fet = Mandala<mandala::est::env::usrf::f9>;    // +
-using m_vesc_tail_temp_motor = Mandala<mandala::est::env::usrf::f10>; // +
-using m_vesc_tail_curr_in = Mandala<mandala::est::env::usrf::f11>;    // +
+using m_vesc_tail_rpm = Mandala<mandala::est::env::usrf::f5>;        // +
+using m_vesc_tail_current = Mandala<mandala::est::env::usr::u10>;    // +
+using m_vesc_tail_duty = Mandala<mandala::est::env::usr::u5>;        // +
+using m_vesc_tail_temp_fet = Mandala<mandala::est::env::usr::u11>;   // +
+using m_vesc_tail_temp_motor = Mandala<mandala::est::env::usr::u12>; // +
+using m_vesc_tail_curr_in = Mandala<mandala::est::env::usr::u13>;    // +
 
 //Vesc gen
-using m_vesc_gen_rpm = Mandala<mandala::sns::env::gen::rpm>;
-using m_vesc_gen_curr_in = Mandala<mandala::sns::env::gen::current>;
-using m_vesc_gen_motor_temp = Mandala<mandala::sns::env::gen::temp>;
-using m_vesc_gen_fet_temp = Mandala<mandala::est::env::usrf::f12>;
+using m_vesc_gen_rpm = Mandala<mandala::sns::env::gen::rpm>;         // +
+using m_vesc_gen_curr_in = Mandala<mandala::sns::env::gen::current>; // +
+using m_vesc_gen_motor_temp = Mandala<mandala::sns::env::gen::temp>; // +
+using m_vesc_gen_fet_temp = Mandala<mandala::est::env::usrc::c6>;    // +
 
 //Ecu
-using m_ecu_speed = Mandala<mandala::est::env::usrw::w3>;              // +
-using m_ecu_tps = Mandala<mandala::est::env::usr::u11>;                // +
-using m_ecu_cylinder_head_temp1 = Mandala<mandala::est::env::usr::u4>; // +
-using m_ecu_cylinder_head_temp2 = Mandala<mandala::est::env::usr::u5>; // +
-using m_ecu_egt1 = Mandala<mandala::est::env::usrw::w4>;               // +
-using m_ecu_egt2 = Mandala<mandala::est::env::usrw::w5>;               // +
-using m_ecu_inlet_air_temp = Mandala<mandala::est::env::usr::u6>;      // +
-using m_ecu_baromeric_pressure = Mandala<mandala::est::env::usr::u7>;  // +
-using m_ecu_coolant_temp = Mandala<mandala::est::env::usr::u8>;        // +
-using m_ecu_fuel_pressure = Mandala<mandala::est::env::usr::u9>;       // +
-using m_ecu_fuel_consumotion = Mandala<mandala::est::env::usr::u10>;   // +
-using m_ecu_pump_speed = Mandala<mandala::est::env::usr::u12>;         // +
+using m_ecu_speed = Mandala<mandala::est::env::usrw::w11>;             // +
+using m_ecu_tps = Mandala<mandala::est::env::usr::u6>;                 // +
+using m_ecu_cht1 = Mandala<mandala::est::env::usrw::w5>;               // +
+using m_ecu_cht2 = Mandala<mandala::est::env::usrw::w6>;               // +
+using m_ecu_egt1 = Mandala<mandala::est::env::usrw::w7>;               // +
+using m_ecu_egt2 = Mandala<mandala::est::env::usrw::w8>;               // +
+using m_ecu_inlet_air_temp = Mandala<mandala::est::env::usrf::f2>;     // +
+using m_ecu_baromeric_pressure = Mandala<mandala::est::env::usrf::f3>; // +
+using m_ecu_coolant_temp = Mandala<mandala::est::env::usrf::f4>;       // +
+using m_ecu_fuel_pressure = Mandala<mandala::est::env::usr::u7>;       // +
+using m_ecu_fuel_consumotion = Mandala<mandala::est::env::usr::u8>;    // +
+using m_ecu_pump_speed = Mandala<mandala::est::env::usrx::x11>;        // +
 
-using m_ecu_st_sns = Mandala<mandala::est::env::usrw::w11>; // +
-using m_ecu_st_act = Mandala<mandala::est::env::usrw::w12>; // +
-using m_ecu_st_eng = Mandala<mandala::est::env::usrw::w13>; // +
-using m_ecu_st_fl = Mandala<mandala::est::env::usrw::w14>;  // +
-using m_ecu_st_pump = Mandala<mandala::est::env::usrb::b7>; // +
+using m_ecu_st_sns = Mandala<mandala::est::env::usrw::w1>;  // +
+using m_ecu_st_act = Mandala<mandala::est::env::usrw::w2>;  // +
+using m_ecu_st_eng = Mandala<mandala::est::env::usrw::w3>;  // +
+using m_ecu_st_fl = Mandala<mandala::est::env::usrw::w4>;   // +
+using m_ecu_st_pump = Mandala<mandala::est::env::usrc::c8>; // +
 
 //Mcell
-using m_mcel_vbat = Mandala<mandala::est::env::usr::u13>;  // +
-using m_mcel_tbat = Mandala<mandala::est::env::usr::u14>;  // +
-using m_mcel_state = Mandala<mandala::est::env::usrb::b1>; // +
+using m_mcel_vbat = Mandala<mandala::sns::env::bat::voltage>; // +
+using m_mcel_tbat = Mandala<mandala::sns::env::bat::temp>;    // +
+using m_mcel_status = Mandala<mandala::est::env::usrc::c5>;   // +
 
 //Uvhpy
-using m_uvhpy_status = Mandala<mandala::est::env::usrb::b2>;     // +
-using m_uvhpy_ibat_filt = Mandala<mandala::est::env::usrf::f13>; // +
+using m_uvhpy_status = Mandala<mandala::est::env::usrc::c4>;    // +
+using m_uvhpy_ibat_filt = Mandala<mandala::est::env::usrf::f1>; // +
 
-//Start ENG
+//Engine
 using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
-using m_eng_mode = Mandala<mandala::cmd::nav::eng::mode>;
+using m_sw_starter = Mandala<mandala::ctr::nav::eng::starter>;
 using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
 
 //Fan control
-using m_fan_control = Mandala<mandala::ctr::env::tune::t1>;
+using m_fan_control = Mandala<mandala::ctr::env::tune::t1>; // +
 
 //SW pump
-using m_sw_pump = Mandala<mandala::ctr::env::sw::sw2>;
-
-bool start_eng{};
-uint32_t start_time_eng{};
+using m_sw_pump = Mandala<mandala::ctr::env::sw::sw1>; // +
 
 //-------------------------------------------------------------------------------------
 uint8_t update_crc8(uint8_t data, uint8_t crc)
@@ -321,10 +320,10 @@ int main()
     m_sw_pump("on_sw_pump");
 
     m_pwr_ign(); //subscribe
-    m_eng_mode();
+    m_sw_starter();
     m_eng_ctr();
 
-    start_time_eng = fan_last_time = time_ms();
+    fan_last_time = time_ms();
 
     printf("IFC Script ready...");
 
@@ -346,25 +345,9 @@ EXPORT void on_start_eng()
     ECUDemandControl(uint16_t((m_eng_ctr::value() * 0.9f + 0.1f) * 1000.f));
 
     bool on_power_ignition = (bool) m_pwr_ign::value();
-    if ((uint32_t) m_eng_mode::value() == mandala::eng_mode_start && !on_power_ignition) {
-        m_eng_mode::publish((uint32_t) mandala::eng_mode_auto);
-        start_eng = false;
-        return;
-    }
 
-    if (on_power_ignition && !start_eng && (uint32_t) m_eng_mode::value() == mandala::eng_mode_start) {
-        start_eng = true;
-        start_time_eng = time_ms();
-        //printf("IFC ENG start...");
-    }
-
-    if (on_power_ignition && start_eng && (time_ms() - start_time_eng) < 3000u) {
+    if (on_power_ignition && (uint32_t) m_sw_starter::value()) {
         setRPM(VESC_GEN_ID, -40000);
-        //printf("IFC ENG spin...");
-    } else if (start_eng) {
-        m_eng_mode::publish((uint32_t) mandala::eng_mode_auto);
-        start_eng = false;
-        //printf("IFC ENG off...");
     }
 }
 
@@ -589,18 +572,21 @@ void processECUPackage(const uint32_t &can_id, const uint8_t *data)
         break;
     }
     case ECU_TCP_ID: {
-        uint16_t cylinder_head_temp1 = uint16_t((data[6] << 8) | data[7]);
-        uint16_t cylinder_head_temp2 = uint16_t((data[4] << 8) | data[5]);
+        uint16_t cht1 = uint16_t((data[6] << 8) | data[7]);
+        uint16_t cht2 = uint16_t((data[4] << 8) | data[5]);
         uint16_t egt1 = uint16_t((data[2] << 8) | data[3]);
         uint16_t egt2 = uint16_t((data[0] << 8) | data[1]);
 
-        m_ecu_cylinder_head_temp1::publish((float) cylinder_head_temp1);
-        m_ecu_cylinder_head_temp2::publish((float) cylinder_head_temp2);
+        m_ecu_cht1::publish((uint32_t) cht1);
+        m_ecu_cht2::publish((uint32_t) cht2);
         m_ecu_egt1::publish((uint32_t) egt1);
         m_ecu_egt2::publish((uint32_t) egt2);
 
-        _ecu.cht1 = cylinder_head_temp1;
-        _ecu.cht2 = cylinder_head_temp2;
+        _ecu.cht1 = cht1;
+        _ecu.cht2 = cht2;
+
+        _ecu.egt1 = egt1;
+        _ecu.egt2 = egt2;
 
         break;
     }
@@ -644,7 +630,6 @@ void processECUPackage(const uint32_t &can_id, const uint8_t *data)
         } else if (st_fl & 0x06) {
             status_pump = 3;
         }
-
         m_ecu_st_pump::publish((uint32_t) status_pump);
         break;
     }
@@ -658,11 +643,11 @@ void processMCELLPackage(const uint32_t &can_id, const uint8_t *data)
         _mcel.v_bat = (float) unpackInt16(data, 0) / 100.f;
         _mcel.t_bat = (float) unpackInt16(data, 2) / 100.f;
         _mcel.t_pcb = (float) unpackInt16(data, 4) / 100.f;
-        _mcel.state = data[7];
+        _mcel.status = data[7];
 
         m_mcel_vbat::publish(_mcel.v_bat);
         m_mcel_tbat::publish(_mcel.t_bat);
-        m_mcel_state::publish((uint32_t) _mcel.state);
+        m_mcel_status::publish((uint32_t) _mcel.status);
 
         /*
         printf("v_bat %.2f", _mcel.v_bat);      //+
@@ -820,7 +805,7 @@ EXPORT void on_can_aux(const uint8_t *data, size_t size)
         break;
     }
     case VESC_GEN_ID: {
-        //printf("vesc gen %x", can_id);
+        //printf("vesc gen %u", can_id);
         uint16_t msg_id = (can_id >> 8) & 0xFF;
         processVESCPackage(msg_id, can_data, &gen_data);
 
