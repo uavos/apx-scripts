@@ -593,7 +593,7 @@ void fuel_manual_control()
     //check time pump ON
     if(((time_ms() - startTimerPumpON) > TIMER_MC * 1000) && (bool)m_pump1::value()){
       printf("VM:Timer STOP...\n");
-      m_pump1::publish((uint32_t)0);
+      m_pump1::publish(0U);
     }
 }
 
@@ -636,7 +636,7 @@ void fuel_auto_control()
         } else if(m_timeDeltaPump1 + TIME_HYST*1000 < localTime) {
           m_timeDeltaPump1Active = false;
           printf("VM:FP1 start:%.2f...\n", kf_start);
-          m_pump1::publish((uint32_t)1);
+          m_pump1::publish(1U);
         }
       }
     } else {
@@ -662,7 +662,7 @@ void fuel_auto_control()
 
       if(stop_pump) {
         printf("VM:FP1 stop:%.2f...\n", kf_stop);
-        m_pump1::publish((uint32_t)0);
+        m_pump1::publish(0U);
       }
     }
 }
@@ -683,14 +683,14 @@ EXPORT void on_task_fuel()
 
     //check answer time from sensor
     if(m_timeAns1+TIME_SA*1000 < time_ms())
-        m_warn_answer1::publish((uint32_t)1);
+        m_warn_answer1::publish(1U);
     else
-        m_warn_answer1::publish((uint32_t)0);
+        m_warn_answer1::publish(0U);
 
     if(m_timeAns2+TIME_SA*1000 < time_ms())
-        m_warn_answer2::publish((uint32_t)1);
+        m_warn_answer2::publish(1U);
     else
-        m_warn_answer2::publish((uint32_t)0);
+        m_warn_answer2::publish(0U);
 
     moving_average();
 
@@ -702,13 +702,14 @@ EXPORT void on_task_fuel()
     m_fuel_ratio::publish(m_vFuelPersent1 / m_vFuelPersent2);
 
     m_fuel_litr::publish(m_fuel_v1::value() + m_fuel_v2::value());
+    m_fuel_perc::publish((float) m_fuel_litr::value() * 100.0f / (V_MAX * 2));
 
     if ((bool)m_ers::value()){
         if((bool)m_pump1::value()){
-            m_pump1::publish((uint32_t)0);
+            m_pump1::publish(0U);
         }
         if((bool)m_pump2::value()){
-            m_pump2::publish((uint32_t)0);
+            m_pump2::publish(0U);
         }
     }else{
 
@@ -716,9 +717,9 @@ EXPORT void on_task_fuel()
             m_ignitionOld = (bool)m_pwr_ign::value();
 
             if(!(bool)m_pwr_ign::value() && (bool)m_pump2::value()){
-                m_pump2::publish((uint32_t)0);
+                m_pump2::publish(0U);
             } else if((bool)m_pwr_ign::value() && !(bool)m_pump2::value()) {
-                m_pump2::publish((uint32_t)1);
+                m_pump2::publish(1U);
             }
         }
 
@@ -726,7 +727,7 @@ EXPORT void on_task_fuel()
             m_algorithmOld = (bool)m_algorithm::value();
 
             if((bool)m_algorithm::value() && (bool)m_pump1::value()){
-                m_pump1::publish((uint32_t)0);
+                m_pump1::publish(0U);
             }
         }
 
@@ -781,25 +782,21 @@ int main()
 
     
     //fuel
-    m_mov_avg(); //subscribe
-    m_fuel_litr();
-    m_fuel_perc();
-    m_fuel_v1();
+    m_fuel_litr(); //subscribe
+    m_fuel_v1(); 
     m_fuel_v2();
     m_fuel_ratio();
     m_pump1();
     m_pump2();
-    m_warn_answer1();
-    m_warn_answer2();
     m_ers();
     m_algorithm();  // 0 - fuel auto control, 1 - fuel manual control
     m_ctr_elevator();
 
-    m_pump1::publish((uint32_t)0);
-    m_pump2::publish((uint32_t)0);
-    m_warn_answer1::publish((uint32_t)0);
-    m_warn_answer2::publish((uint32_t)0);
-    m_algorithm::publish((uint32_t)0);
+    m_pump1::publish(0U);
+    m_pump2::publish(0U);
+    m_warn_answer1::publish(0U);
+    m_warn_answer2::publish(0U);
+    m_algorithm::publish(0U);
     startTimerPumpON = time_ms();
 
     task("on_task_fuel", DELAY_MS);
