@@ -5,7 +5,7 @@ using m_rt = Mandala<mandala::sns::env::aux::rt>;
 
 //RPM
 const float PART_ERR{0.04f};
-const uint8_t K_DV{8};
+const float K_DV{8.f};
 const uint8_t TRY_NUM{25};
 
 bool err1{};
@@ -46,15 +46,25 @@ using m_sw_ecu_rpm = Mandala<mandala::ctr::env::sw::sw4>;
 using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
 using m_on_hold = Mandala<mandala::est::env::usrb::b2>;
 
-//RC mode
-using m_rc_mode = Mandala<mandala::cmd::nav::rc::mode>;
-
-using m_t2 = Mandala<mandala::ctr::env::tune::t2>; //prop
+//SBUS RX
+using m_t2 = Mandala<mandala::ctr::env::tune::t2>; //sbus_prop
+using m_t3 = Mandala<mandala::ctr::env::tune::t3>; //sbus_roll
+using m_t4 = Mandala<mandala::ctr::env::tune::t4>; //sbus_pitch
+using m_t5 = Mandala<mandala::ctr::env::tune::t5>; //sbus_yaw
+using m_t6 = Mandala<mandala::ctr::env::tune::t6>; //sbus_rc_mode
+using m_t7 = Mandala<mandala::ctr::env::tune::t7>; //sbus_rc_datalink
+using m_t8 = Mandala<mandala::ctr::env::tune::t8>; //sbus_rc_chenge
 
 using m_rc_prop = Mandala<mandala::cmd::nav::rc::prop>;   //rc_prop
 using m_rc_roll = Mandala<mandala::cmd::nav::rc::roll>;   //rc_roll
 using m_rc_pitch = Mandala<mandala::cmd::nav::rc::pitch>; //rc_pitch
 using m_rc_yaw = Mandala<mandala::cmd::nav::rc::yaw>;     //rc_yaw
+using m_rc_mode = Mandala<mandala::cmd::nav::rc::mode>;   //rc_mode
+
+bool reset_rc_data = false;
+
+float rc_prev_value{0.f};
+uint32_t rc_prev_timer{0};
 
 enum {
     proc_mode_EMG = 0,
@@ -77,13 +87,24 @@ int main()
     m_mode();
 
     m_rc_mode();
-    m_t2();
+    m_t2();               //prop
+    m_t3();               //roll
+    m_t4();               //pitch
+    m_t5();               //yaw
+    m_t6();               //mode
+    m_t7();               //datalink
+    m_t8("on_rc_change"); //change
 
     m_gyro_temp("on_gyro_temp"); // subscribe `on changed` event
     task("on_rpm", 25);          // 40 Hz
     task("on_mode", 1000);       // 1 Hz
 
     task("on_rc_mode", 10); // 100 Hz
+
+    rc_prev_timer = time_ms();
+
+    //init temp
+    m_rt::publish(m_gyro_temp::value());
 
     return 0;
 }
@@ -177,9 +198,38 @@ EXPORT void on_rpm()
     m_sns_rpm::publish(rpm);
 }
 
+EXPORT void on_rc_change()
+{
+    if (fabs(m_t8::value() - rc_prev_value) > 0.5f) {
+        rc_prev_value = m_t8::value();
+        rc_prev_timer = time_ms();
+    }
+}
+
 EXPORT void on_rc_mode()
 {
-    if ((uint32_t) m_rc_mode::value() == mandala::rc_mode_manual) {
+    bool on_rc_datalink = (m_t7::value() > 0.5f);
+    bool on_rc_mode = (m_t6::value() > 0.5f);
+    bool on_timer = ((time_ms() - rc_prev_timer) < 1200);
+
+    if (on_rc_mode && on_rc_datalink && on_timer) {
+        m_rc_mode::publish((uint32_t) mandala::rc_mode_manual);
+
         m_rc_prop::publish(m_t2::value() * (-1.f));
+        m_rc_roll::publish(m_t3::value());
+        m_rc_pitch::publish(m_t4::value());
+        m_rc_yaw::publish(m_t5::value());
+
+        reset_rc_data = true;
+
+    } else if (reset_rc_data) {
+        m_rc_mode::publish((uint32_t) mandala::rc_mode_auto);
+
+        m_rc_prop::publish(0.f);
+        m_rc_roll::publish(0.f);
+        m_rc_pitch::publish(0.f);
+        m_rc_yaw::publish(0.f);
+
+        reset_rc_data = false;
     }
 }
