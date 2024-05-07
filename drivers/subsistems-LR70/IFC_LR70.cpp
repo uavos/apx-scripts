@@ -247,55 +247,6 @@ using m_fan_control = Mandala<mandala::ctr::env::tune::t1>; // +
 using m_sw_pump = Mandala<mandala::ctr::env::sw::sw1>; // +
 
 //-------------------------------------------------------------------------------------
-uint8_t update_crc8(uint8_t data, uint8_t crc)
-{
-    data ^= crc;
-    for (uint8_t i = 0; i < 8; i++)
-        data = uint8_t((data & 0x80) ? 0x07 ^ (data << 1) : (data << 1));
-    return data;
-}
-
-uint8_t get_crc8(const uint8_t *data, uint8_t len)
-{
-    uint8_t crc = 0;
-    for (uint8_t i = 0; i < len; i++)
-        crc = update_crc8(data[i], crc);
-    return crc & 0xFF;
-}
-
-int32_t decodeValue(const uint8_t *data, int8_t index, int8_t len)
-{
-    int32_t value = 0;
-    uint32_t mul = 1;
-
-    for (int8_t i = len - 1; i >= 0; i--) {
-        uint8_t byte = data[index + i];
-        if (byte >= 48 && byte <= 57)
-            value += (byte - 48) * mul;
-        else if (byte >= 65 && byte <= 70)
-            value += (byte - 55) * mul;
-        else
-            return -1;
-        mul *= 16;
-    }
-
-    return value;
-}
-
-void serializeInt(uint8_t *data, uint8_t index, int32_t value)
-{
-    for (uint8_t i = 0; i < 4; i++) {
-        uint8_t shift = 8 * (4 - i - 1);
-        data[index + i] = (value >> shift) & 0xFF;
-    }
-}
-
-int16_t unpackInt16(const uint8_t *data, uint8_t index)
-{
-    return (int16_t) (data[index] | (data[index + 1] << 8));
-}
-
-//-------------------------------------------------------------------------------------
 
 void ECUEngineStop(bool);
 void ECUDemandControl(uint16_t);
@@ -315,6 +266,8 @@ int main()
 
     task("on_task", 500); //request GILL and FAN control
     task("on_start_eng", 100);
+    task("mcell"); //GCS with terminal command `vmexec("mcell")`
+    task("uvhpu"); //GCS with terminal command `vmexec("uvhpu")`
 
     m_pwr_ign("on_pwr_ign");
     m_sw_pump("on_sw_pump");
@@ -393,7 +346,55 @@ EXPORT void on_task()
     //printf("fan_control %.2f", fan_cmd);
     m_fan_control::publish(fan_cmd);
 }
+//-------------------------------------------------------------------------------------
+uint8_t update_crc8(uint8_t data, uint8_t crc)
+{
+    data ^= crc;
+    for (uint8_t i = 0; i < 8; i++)
+        data = uint8_t((data & 0x80) ? 0x07 ^ (data << 1) : (data << 1));
+    return data;
+}
 
+uint8_t get_crc8(const uint8_t *data, uint8_t len)
+{
+    uint8_t crc = 0;
+    for (uint8_t i = 0; i < len; i++)
+        crc = update_crc8(data[i], crc);
+    return crc & 0xFF;
+}
+
+int32_t decodeValue(const uint8_t *data, int8_t index, int8_t len)
+{
+    int32_t value = 0;
+    uint32_t mul = 1;
+
+    for (int8_t i = len - 1; i >= 0; i--) {
+        uint8_t byte = data[index + i];
+        if (byte >= 48 && byte <= 57)
+            value += (byte - 48) * mul;
+        else if (byte >= 65 && byte <= 70)
+            value += (byte - 55) * mul;
+        else
+            return -1;
+        mul *= 16;
+    }
+
+    return value;
+}
+
+void serializeInt(uint8_t *data, uint8_t index, int32_t value)
+{
+    for (uint8_t i = 0; i < 4; i++) {
+        uint8_t shift = 8 * (4 - i - 1);
+        data[index + i] = (value >> shift) & 0xFF;
+    }
+}
+
+int16_t unpackInt16(const uint8_t *data, uint8_t index)
+{
+    return (int16_t) (data[index] | (data[index + 1] << 8));
+}
+//-------------------------------------------------------------------------------------
 EXPORT void on_serial_gill(const uint8_t *data, size_t size)
 {
     /*
@@ -648,49 +649,44 @@ void processMCELLPackage(const uint32_t &can_id, const uint8_t *data)
         m_mcel_vbat::publish(_mcel.v_bat);
         m_mcel_tbat::publish(_mcel.t_bat);
         m_mcel_status::publish((uint32_t) _mcel.status);
-
-        /*
-        printf("v_bat %.2f", _mcel.v_bat);      //+
-        printf("t_bat %.2f", _mcel.t_bat);      //+
-        printf("t_pcb %.2f", _mcel.t_pcb);
-        printf("state %u", _mcel.state);        //+
-        */
-
         break;
     }
     case MCELL_PACK2: {
         memcpy(_mcel.cell, data, 8);
-        /*
-        printf("C[0] %.3f", _mcel.cell_volt(0));
-        printf("C[1] %.3f", _mcel.cell_volt(1));
-        printf("C[2] %.3f", _mcel.cell_volt(2));
-        printf("C[3] %.3f", _mcel.cell_volt(3));
-        */
-
         break;
     }
     case MCELL_PACK3: {
         memcpy(_mcel.cell + 4, data, 8);
-        /*
-        printf("C[4] %.3f", _mcel.cell_volt(4));
-        printf("C[5] %.3f", _mcel.cell_volt(5));
-        printf("C[6] %.3f", _mcel.cell_volt(6));
-        printf("C[7] %.3f", _mcel.cell_volt(7));
-        */
-
         break;
     }
     case MCELL_PACK4: {
         memcpy(_mcel.cell + 8, data, 8);
-        /*
-        printf("C[8] %.3f", _mcel.cell_volt(8));
-        printf("C[9] %.3f", _mcel.cell_volt(9));
-        printf("C[10] %.3f", _mcel.cell_volt(10));
-        printf("C[11] %.3f", _mcel.cell_volt(11));
-        */
         break;
     }
     }
+}
+
+EXPORT void mcell()
+{
+    printf("v_bat: %.2f", _mcel.v_bat);
+    printf("t_bat: %.2f", _mcel.t_bat);
+    printf("t_pcb: %.2f", _mcel.t_pcb);
+    printf("state: %u", _mcel.status);
+
+    printf("C[1]: %.2f", _mcel.cell_volt(0));
+    printf("C[2]: %.2f", _mcel.cell_volt(1));
+    printf("C[3]: %.2f", _mcel.cell_volt(2));
+    printf("C[4]: %.2f", _mcel.cell_volt(3));
+
+    printf("C[5]: %.2f", _mcel.cell_volt(4));
+    printf("C[6]: %.2f", _mcel.cell_volt(5));
+    printf("C[7]: %.2f", _mcel.cell_volt(6));
+    printf("C[8]: %.2f", _mcel.cell_volt(7));
+
+    //printf("C[9] %.2f", _mcel.cell_volt(8));
+    //printf("C[10] %.2f", _mcel.cell_volt(9));
+    //printf("C[11] %.2f", _mcel.cell_volt(10));
+    //printf("C[12] %.2f", _mcel.cell_volt(11));
 }
 
 void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
@@ -700,11 +696,6 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
         _uvhpu.MSG1.vbat = (float) unpackInt16(data, 0) / 100.f;
         memcpy(&_uvhpu.MSG1.ibat, data + 2, 4);
         _uvhpu.MSG1.imon = (float) unpackInt16(data, 6) / 100.f;
-
-        //printf("P1");
-        //printf("vbat %.2f", _uvhpu.MSG1.vbat);
-        //printf("ibat %.2f", _uvhpu.MSG1.ibat);
-        //printf("imon %.2f", _uvhpu.MSG1.imon);
         break;
     }
     case UVHPU_PACK2: {
@@ -714,64 +705,58 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
         _uvhpu.MSG2.status = data[7];
 
         m_uvhpy_status::publish(_uvhpu.MSG2.status);
-
-        //printf("P2");
-        //printf("vout %.2f", _uvhpu.MSG2.vout);
-        //printf("tbat %.2f", _uvhpu.MSG2.tbat);
-        //printf("pbat %.2f", _uvhpu.MSG2.pbat);
-        //printf("status %u", _uvhpu.MSG2.status);      //+
-
         break;
     }
     case UVHPU_PACK3: {
         memcpy(&_uvhpu.MSG3.cbat, data, 8);
-
-        //printf("P3");
-        //printf("cbat %.2f", _uvhpu.MSG3.cbat);
-        //printf("ebat %.2f", _uvhpu.MSG3.ebat);
-
         break;
     }
     case UVHPU_PACK4: {
         memcpy(&_uvhpu.MSG4.res_bar, data, 8);
-
-        //printf("P4");
-        //printf("res_bar %.2f", _uvhpu.MSG4.res_bar);
-        //printf("v_res %.2f", _uvhpu.MSG4.v_res);
-
         break;
     }
     case UVHPU_PACK5: {
         memcpy(&_uvhpu.MSG5.ibat_filt, data, 8);
-
         m_uvhpy_ibat_filt::publish(_uvhpu.MSG5.ibat_filt);
-
-        //printf("P5");
-        //printf("ibat_filt %.2f", _uvhpu.MSG5.ibat_filt);        //+
-        //printf("vbat_filt %.2f", _uvhpu.MSG5.vbat_filt);
-
         break;
     }
     case UVHPU_PACK6: {
         memcpy(&_uvhpu.MSG6.cbat_res, data, 8);
-
-        //printf("P6");
-        //printf("cbat_res %.2f", _uvhpu.MSG6.cbat_res);
-        //printf("ebat_res %.2f", _uvhpu.MSG6.ebat_res);
-
         break;
     }
     case UVHPU_PACK7: {
         _uvhpu.MSG7.life_cycles = unpackInt16(data, 0);
         memcpy(&_uvhpu.MSG7.cbat_mod, data + 2, 4);
-
-        //printf("P7");
-        //printf("life_cycles %u", _uvhpu.MSG7.life_cycles);
-        //printf("cbat_mod %.2f", _uvhpu.MSG7.cbat_mod);
-
         break;
     }
     }
+}
+
+EXPORT void uvhpu()
+{
+    printf("vbat: %.2f", _uvhpu.MSG1.vbat);
+    printf("iba: %.2f", _uvhpu.MSG1.ibat);
+    printf("imon: %.2f", _uvhpu.MSG1.imon);
+
+    printf("vout: %.2f", _uvhpu.MSG2.vout);
+    printf("tbat: %.2f", _uvhpu.MSG2.tbat);
+    printf("pbat: %.2f", _uvhpu.MSG2.pbat);
+    printf("status: %u", _uvhpu.MSG2.status);
+
+    printf("cbat: %.2f", _uvhpu.MSG3.cbat);
+    printf("ebat: %.2f", _uvhpu.MSG3.ebat);
+
+    printf("res_bar: %.2f", _uvhpu.MSG4.res_bar);
+    printf("v_res: %.2f", _uvhpu.MSG4.v_res);
+
+    printf("ibat_filt: %.2f", _uvhpu.MSG5.ibat_filt);
+    printf("vbat_filt: %.2f", _uvhpu.MSG5.vbat_filt);
+
+    printf("cbat_res: %.2f", _uvhpu.MSG6.cbat_res);
+    printf("ebat_res: %.2f", _uvhpu.MSG6.ebat_res);
+
+    printf("life_cycles: %u", _uvhpu.MSG7.life_cycles);
+    printf("cbat_mod: %.2f", _uvhpu.MSG7.cbat_mod);
 }
 
 EXPORT void on_can_aux(const uint8_t *data, size_t size)
