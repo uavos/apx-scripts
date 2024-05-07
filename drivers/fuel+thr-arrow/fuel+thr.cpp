@@ -126,7 +126,7 @@ const float V_BLOCK_PUMP = 1.0; //%
 //const float KF1_RATIO = 1.0;
 const float KF2_RATIO = 3.0;     //tank1 = 3 * tank2
 
-float fuel_v1; //value from sensor
+float fuel_v1 = V_MAX; //value from sensor
 const float pump_speed = 0.03722f; // liters / sec 
 
 const uint8_t TIME_HYST = 1;       //sec
@@ -675,7 +675,7 @@ EXPORT void on_task_fuel()
     //estimate fuel volume in tank 1
     if((m_mov_avg::value() > -0.3f) && (m_mov_avg::value() < 0.3f))
         m_fuel_v1_est::publish(fuel_v1);
-    else if((bool)m_pump1::value())
+    else if((bool)m_pump1::value() && m_fuel_v1_est::value() > 0.1f)
         m_fuel_v1_est::publish(m_fuel_v1_est::value() - pump_speed * DELAY_MS / 1000.0f);
 
     //test fuel sensor
@@ -686,8 +686,8 @@ EXPORT void on_task_fuel()
     if(m_fuel_v2::value() < 0.1f)
         m_fuel_v2::publish(0.1f);
     if((bool)m_pump1::value() && fuel_v1 > 0.01f) {
-        fuel_v1 -= 0.1f;
-        m_fuel_v2::publish((float) m_fuel_v2::value() + 0.1f);
+        fuel_v1 -= 0.006f;
+        m_fuel_v2::publish((float) m_fuel_v2::value() + 0.006f);
     }
 
     //check answer time from sensor
