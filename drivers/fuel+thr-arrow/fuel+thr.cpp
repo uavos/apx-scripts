@@ -126,12 +126,15 @@ const float V_BLOCK_PUMP = 1.0; //%
 //const float KF1_RATIO = 1.0;
 const float KF2_RATIO = 3.0;     //tank1 = 3 * tank2
 
+float fuel_v1; //value from sensor
+const float pump_speed = 0.03722f; // liters / sec 
+
 const uint8_t TIME_HYST = 1;       //sec
 const uint8_t TIME_SA = 2;       //sec
 const uint8_t TIMER_MC = 50;      //sec
 
 const uint8_t DELAY_MS = 200;
-const uint16_t AVG_MS = 10000;
+const uint16_t AVG_MS = 15000;
 const uint16_t AVG_N = AVG_MS/DELAY_MS;
 
 float avg_window[AVG_N];
@@ -145,7 +148,7 @@ using m_mov_avg = Mandala<mandala::est::env::usr::u4>;
 using m_fuel_litr = Mandala<mandala::est::env::usr::u5>; 
 using m_fuel_perc = Mandala<mandala::sns::env::fuel::level>;
 
-using m_fuel_v1 = Mandala<mandala::est::env::usr::u6>;
+using m_fuel_v1_est = Mandala<mandala::est::env::usr::u6>;
 using m_fuel_v2 = Mandala<mandala::est::env::usr::u7>;
 using m_fuel_ratio = Mandala<mandala::est::env::usr::u3>;
 
@@ -567,7 +570,7 @@ void moving_average()
       avg_window[i] = avg_window[i+1];
     }
 
-    avg_window[AVG_N-1] = m_ctr_elevator::value();
+    avg_window[AVG_N-1] = m_ctr_elevator::value();  //todo: change to vspeed
 
     avg_summ = 0.0;
     for(uint8_t i = 0; i < AVG_N; i++){
@@ -669,6 +672,12 @@ void fuel_auto_control()
 
 EXPORT void on_task_fuel()
 {
+    //estimate fuel volume in tank 1
+    if((m_mov_avg::value() > -0.3f) && (m_mov_avg::value() < 0.3f))
+        m_fuel_v1_est::publish(fuel_v1);
+    else if((bool)m_pump1::value())
+        m_fuel_v1_est::publish(m_fuel_v1_est::value() - pump_speed * DELAY_MS / 1000.0f);
+
     //test fuel sensor
     float ctr_thr = m_thr::value();
     if(ctr_thr < 0.01f)
@@ -676,8 +685,8 @@ EXPORT void on_task_fuel()
     m_fuel_v2::publish((float) m_fuel_v2::value() - 0.05f * ctr_thr);
     if(m_fuel_v2::value() < 0.1f)
         m_fuel_v2::publish(0.1f);
-    if((bool)m_pump1::value() && m_fuel_v1::value() > 0.01f) {
-        m_fuel_v1::publish((float) m_fuel_v1::value() - 0.1f);
+    if((bool)m_pump1::value() && fuel_v1 > 0.01f) {
+        fuel_v1 -= 0.1f;
         m_fuel_v2::publish((float) m_fuel_v2::value() + 0.1f);
     }
 
@@ -694,14 +703,14 @@ EXPORT void on_task_fuel()
 
     moving_average();
 
-    m_vFuelPersent1 = m_fuel_v1::value() * 100.0f / V_MAX;
+    m_vFuelPersent1 = m_fuel_v1_est::value() * 100.0f / V_MAX;
     m_vFuelPersent2 = m_fuel_v2::value() * 100.0f / V_MAX;
 
     if(m_vFuelPersent2 < 1.0f)
         m_vFuelPersent2 = 1.0f;
     m_fuel_ratio::publish(m_vFuelPersent1 / m_vFuelPersent2);
 
-    m_fuel_litr::publish(m_fuel_v1::value() + m_fuel_v2::value());
+    m_fuel_litr::publish(m_fuel_v1_est::value() + m_fuel_v2::value());
     m_fuel_perc::publish((float) m_fuel_litr::value() * 100.0f / (V_MAX * 2));
 
     if ((bool)m_ers::value()){
@@ -754,8 +763,7 @@ EXPORT void on_serial_fuel(const uint8_t *data, size_t size)
             if(data[8] == calcCrc(data, 8)) {
                 if(data[1] == ADR_SENS1) {
                     m_timeAns1 = time_ms();
-                    float m_vFuel1 = (float) (data[4] | (data[5] << 8)) / 10.0f;
-                    m_fuel_v1::publish(m_vFuel1);
+                    fuel_v1 = (float) (data[4] | (data[5] << 8)) / 10.0f;;
                     //printf("sens1: %f\r\n", m_vFuel1);
                 } else if(data[1] == ADR_SENS2) {
                     m_timeAns2 = time_ms();
@@ -783,7 +791,7 @@ int main()
     
     //fuel
     m_fuel_litr(); //subscribe
-    m_fuel_v1(); 
+    m_fuel_v1_est(); 
     m_fuel_v2();
     m_fuel_ratio();
     m_pump1();
@@ -791,6 +799,7 @@ int main()
     m_ers();
     m_algorithm();  // 0 - fuel auto control, 1 - fuel manual control
     m_ctr_elevator();
+    m_mov_avg();
 
     m_pump1::publish(0U);
     m_pump2::publish(0U);
@@ -802,7 +811,7 @@ int main()
     task("on_task_fuel", DELAY_MS);
     receive(port_id_fuel, "on_serial_fuel");
 
-    m_fuel_v1::publish((float)32.0f);
+    m_fuel_v1_est::publish((float)32.0f);
     m_fuel_v2::publish((float)32.0f);
 
     return 0;
