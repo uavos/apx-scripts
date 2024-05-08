@@ -128,6 +128,7 @@ const float KF2_RATIO = 3.0;     //tank1 = 3 * tank2
 
 float fuel_v1 = V_MAX; //value from sensor
 const float pump_speed = 0.03722f; // liters / sec 
+bool estimate_fuel = true;
 
 const uint8_t TIME_HYST = 1;       //sec
 const uint8_t TIME_SA = 2;       //sec
@@ -673,7 +674,7 @@ void fuel_auto_control()
 EXPORT void on_task_fuel()
 {
     //estimate fuel volume in tank 1
-    if((m_mov_avg::value() > -0.3f) && (m_mov_avg::value() < 0.3f))
+    if(((m_mov_avg::value() > -0.3f) && (m_mov_avg::value() < 0.3f)) || estimate_fuel == false)
         m_fuel_v1_est::publish(fuel_v1);
     else if((bool)m_pump1::value() && m_fuel_v1_est::value() > 0.1f)
         m_fuel_v1_est::publish(m_fuel_v1_est::value() - pump_speed * DELAY_MS / 1000.0f);
@@ -776,6 +777,15 @@ EXPORT void on_serial_fuel(const uint8_t *data, size_t size)
     }
 }
 
+EXPORT void estfuel()
+{
+    estimate_fuel = !estimate_fuel;
+    if(estimate_fuel)
+        printf("fuel1 estimation on");
+    else
+        printf("fuel1 estimation off");
+}
+
 // ============================= MAIN ================================
 int main()
 {
@@ -810,6 +820,7 @@ int main()
 
     task("on_task_fuel", DELAY_MS);
     receive(port_id_fuel, "on_serial_fuel");
+    task("estfuel"); //GCS with terminal command `vmexec("estfuel")`
 
     m_fuel_v1_est::publish((float)32.0f);
     m_fuel_v2::publish((float)32.0f);
