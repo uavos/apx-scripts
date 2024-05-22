@@ -14,12 +14,16 @@
 #define KF1_RATIO       1.0
 #define KF2_RATIO       3.0     //tank1 = 3 * tank2
 
+new Float: vFuel1 = V_MAX; //value from sensor
+#define PUMP_SPEED      0.03722 // liters / sec
+new bool: estimate_fuel = true;
+
 #define TIME_HYST       1       //sec
 #define TIME_SA         2       //sec
 #define TIMER_MC        50      //sec
 
 #define DELAY_MS        200
-#define AVG_MS          10000
+#define AVG_MS          15000
 #define AVG_N           AVG_MS/DELAY_MS
 
 new Float: avg_window[AVG_N];
@@ -36,7 +40,7 @@ new MANDALA_ALGORITM = f_userb_1;
 new MANDALA_PUMP1 = f_userb_2;
 new MANDALA_PUMP2 = f_userb_3;
 new MANDALA_FUEL = f_fuel;
-new MANDALA_FUEL_V1 = f_user1;
+new MANDALA_FUEL_V1_est = f_user1;
 new MANDALA_FUEL_V2 = f_user2;
 new MANDALA_FUEL_RATIO = f_user3;
 
@@ -61,13 +65,12 @@ new Float: kf_start = 0.0;
 new Float: kf_stop = 0.0;
 new Float: m_vFuelPersent1;
 new Float: m_vFuelPersent2;
+new Float: fuel_ratio;
 new m_timeAns1;
 new m_timeAns2;
 
 new Float: m_timeDeltaPump1;
 new m_timeDeltaPump1Active = 0;
-
-new m_timePump1Active = 0;
 
 new startTimerPumpON;
 new bool:m_start_pump1;
@@ -109,15 +112,6 @@ fuel_auto_control()
 {
     new localTime = time();
 
-    if(m_vFuelPersent2 < 1.0)
-      m_vFuelPersent2 = 1.0;
-
-    new Float: fuel_ratio = m_vFuelPersent1 / m_vFuelPersent2;
-
-
-    set_var(MANDALA_FUEL_RATIO, fuel_ratio, true);
-
-
     if(m_vFuelPersent2 > P2_TANK2 && !m_pump1) {
       pump_stage = 1;
       kf_start = KF2_RATIO;
@@ -153,7 +147,6 @@ fuel_auto_control()
           m_timeDeltaPump1 = localTime;
         } else if(m_timeDeltaPump1 + TIME_HYST*1000 < localTime) {
           m_timeDeltaPump1Active = false;
-          m_timePump1Active = true;
           printf("VM:FP1 start:%.2f...\n", kf_start);
           set_var(MANDALA_PUMP1, 1, true);
         }
@@ -164,7 +157,7 @@ fuel_auto_control()
 
 
     //stop pump1
-    if(m_timePump1Active && m_pump1) {
+    if(m_pump1) {
 
       new bool:stop_pump = false;
 
@@ -182,22 +175,9 @@ fuel_auto_control()
 
       if(stop_pump) {
         printf("VM:FP1 stop:%.2f...\n", kf_stop);
-        m_timePump1Active = false;
         set_var(MANDALA_PUMP1, 0, true);
       }
     }
-
-
-    //check answer time from sensor
-    if(m_timeAns1+TIME_SA*1000 < localTime)
-      set_var(MANDALA_WARN_ANSWER1, 1, true);
-    else
-      set_var(MANDALA_WARN_ANSWER1, 0, true);
-
-    if(m_timeAns2+TIME_SA*1000 < localTime)
-      set_var(MANDALA_WARN_ANSWER2, 1, true);
-    else
-      set_var(MANDALA_WARN_ANSWER2, 0, true);
 }
 
 fuel_manual_control()
@@ -225,7 +205,7 @@ moving_average()
       avg_window[i] = avg_window[i+1];
     }
 
-    avg_window[AVG_N-1] = get_var(f_ctr_elevator);
+    avg_window[AVG_N-1] = get_var(f_vspeed);
 
     avg_summ = 0.0;
     for(new i=0; i<AVG_N; i++){
@@ -256,34 +236,54 @@ calcCrc(buf{}, size)
 
 @OnTask()
 {
+    //estimate fuel volume in tank 1
+    if(((get_var(MANDALA_MAVG) > -0.3) && (get_var(MANDALA_MAVG) < 0.3)) || estimate_fuel == false)
+        set_var(MANDALA_FUEL_V1_est, vFuel1, true);
+    else if(m_pump1 && get_var(MANDALA_FUEL_V1_est) > 0.1)
+        set_var(MANDALA_FUEL_V1_est, get_var(MANDALA_FUEL_V1_est) - PUMP_SPEED * DELAY_MS / 1000.0, true);
+
     //test fuel sensor
-    new Float: ctr_thr = get_var(f_ctr_throttle);
+    new Float: ctr_thr = get_var(f_rc_throttle);
     if(ctr_thr < 0.01)
       ctr_thr = 0.01;
     set_var(f_user2, get_var(f_user2) - 0.05 * ctr_thr, true);
     if(get_var(f_user2) < 0.1)
       set_var(f_user2, 0.1, true);
     if(m_pump1 && get_var(f_user1) > 0.01) {
-      set_var(f_user1, get_var(f_user1) - 0.1, true);
-      set_var(f_user2, get_var(f_user2) + 0.1, true);
+      //set_var(f_user1, get_var(f_user1) - 0.1, true);
+      vFuel1 -= 0.01;
+      set_var(f_user2, get_var(f_user2) + 0.01, true);
     }
+
+    //check answer time from sensor
+    if(m_timeAns1+TIME_SA*1000 < time())
+      set_var(MANDALA_WARN_ANSWER1, 1, true);
+    else
+      set_var(MANDALA_WARN_ANSWER1, 0, true);
+
+    if(m_timeAns2+TIME_SA*1000 < time())
+      set_var(MANDALA_WARN_ANSWER2, 1, true);
+    else
+      set_var(MANDALA_WARN_ANSWER2, 0, true);
 
     moving_average();
 
-    new Float: fl1 = get_var(MANDALA_FUEL_V1);
+    new Float: fl1 = get_var(MANDALA_FUEL_V1_est);
     new Float: fl2 = get_var(MANDALA_FUEL_V2);
+    set_var(MANDALA_FUEL, fl1 + fl2, true);
+
+    m_vFuelPersent1 = fl1 * 100 / V_MAX;
+    m_vFuelPersent2 = fl2 * 100 / V_MAX;
+    if(m_vFuelPersent2 < 1.0)
+      m_vFuelPersent2 = 1.0;
+    fuel_ratio = m_vFuelPersent1 / m_vFuelPersent2;
+    set_var(MANDALA_FUEL_RATIO, fuel_ratio, true);
 
     m_ignition = get_var(MANDALA_IGNITION);
     m_ers = get_var(MANDALA_ERS);
     m_algoritm = get_var(MANDALA_ALGORITM);
     m_pump1 = get_var(MANDALA_PUMP1);
     m_pump2 = get_var(MANDALA_PUMP2);
-
-    m_vFuelPersent1 = fl1 * 100 / V_MAX;
-    m_vFuelPersent2 = fl2 * 100 / V_MAX;
-
-    set_var(MANDALA_FUEL, fl1 + fl2, true);
-
 
     if (m_ers){
         if(m_pump1){
@@ -299,6 +299,8 @@ calcCrc(buf{}, size)
 
             if(!m_ignition && m_pump2){
               set_var(MANDALA_PUMP2, 0, true);
+            } else if(m_ignition && !m_pump2) {
+              set_var(MANDALA_PUMP2, 1, true);
             }
         }
 
@@ -341,10 +343,8 @@ forward @sensorHandler(cnt);
 
                 if(data{1} == ADR_SENS1) {
                     m_timeAns1 = time();
-                    new Float: m_vFuel1 = (data{4} | (data{5} << 8)) / 10.0;
-                    set_var(MANDALA_FUEL_V1, m_vFuel1, true);
+                    vFuel1 = (data{4} | (data{5} << 8)) / 10.0;
                     //printf("sens1: %f\r\n", m_vFuel1);
-
                 }
 
                 if(data{1} == ADR_SENS2) {
@@ -356,4 +356,14 @@ forward @sensorHandler(cnt);
             }
         }
     }
+}
+
+forward @estfuel()
+@estfuel()
+{
+    estimate_fuel = !estimate_fuel;
+    if(estimate_fuel)
+        printf("fuel1 estimation on");
+    else
+        printf("fuel1 estimation off");
 }
