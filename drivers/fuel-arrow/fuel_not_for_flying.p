@@ -243,7 +243,7 @@ calcCrc(buf{}, size)
         set_var(MANDALA_FUEL_V1_est, get_var(MANDALA_FUEL_V1_est) - PUMP_SPEED * DELAY_MS / 1000.0, true);
 
     //test fuel sensor
-    new Float: ctr_thr = get_var(f_rc_throttle);
+    /*new Float: ctr_thr = get_var(f_rc_throttle);
     if(ctr_thr < 0.01)
       ctr_thr = 0.01;
     set_var(f_user2, get_var(f_user2) - 0.05 * ctr_thr, true);
@@ -253,7 +253,7 @@ calcCrc(buf{}, size)
       //set_var(f_user1, get_var(f_user1) - 0.1, true);
       vFuel1 -= 0.01;
       set_var(f_user2, get_var(f_user2) + 0.01, true);
-    }
+    }*/
 
     //check answer time from sensor
     if(m_timeAns1+TIME_SA*1000 < time())
