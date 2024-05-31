@@ -51,13 +51,16 @@ new m_ignitionOld;
 new m_pump1 = 0;
 new m_pump2 = 0;
 new m_pump3 = 0;
-new pump_stage = -1;
+new pump_stage = 1; //default stage
 
 new Float: kf_start = 0.0;
 new Float: kf_stop = 0.0;
 new Float: m_vFuelPersent1;
 new Float: m_vFuelPersent2;
 new Float: m_vFuelPersent3;
+new Float: fl1;
+new Float: fl2;
+new Float: fl3;
 new Float: fuel_ratio;
 new m_timeAns1;
 new m_timeAns2;
@@ -67,7 +70,7 @@ main()
 {
     m_ignitionOld = false;
     m_algoritmOld = false;
-    m_start_pump1 = false;
+    //m_start_pump1 = false;
 
     set_var(MANDALA_PUMP1, 0, true);
     set_var(MANDALA_PUMP2, 0, true);
@@ -77,7 +80,7 @@ main()
     // 1 - fuel manual control
     //set_var(MANDALA_ALGORITM, 0.0, true);
 
-    startTimerPumpON = time();
+    //startTimerPumpON = time();
 
     serial_listen(PORT_RS485, "@sensorHandler");
 
@@ -98,25 +101,116 @@ Float:interpolate(Float:val, Float:x_min, Float:x_max, Float:y_min, Float: y_max
 }
 */
 //---------------------------------------------------------------
+
+turn_on_pump_1()
+{
+  if(!m_pump1)
+  {
+    if(m_pump2 || m_pump3)
+    {
+      set_var(MANDALA_PUMP2, 0, true);
+      set_var(MANDALA_PUMP3, 0, true);
+      return; //wait 200ms till the next iteration
+    }
+    set_var(MANDALA_PUMP1, 1, true);
+  }
+}
+turn_on_pump_2()
+{      
+  if(!m_pump2)
+    {
+      if(m_pump1 || m_pump3)
+      {
+        set_var(MANDALA_PUMP1, 0, true);
+        set_var(MANDALA_PUMP3, 0, true);
+        return; //wait 200ms till the next iteration
+      }
+      set_var(MANDALA_PUMP2, 1, true);
+    }
+}
+
+turn_on_pump_3()
+{
+  if(!m_pump3)
+  {
+    if(m_pump1 || m_pump2)
+    {
+      set_var(MANDALA_PUMP1, 0, true);
+      set_var(MANDALA_PUMP2, 0, true);
+      return; //wait 200ms till the next iteration
+    }
+    set_var(MANDALA_PUMP3, 1, true);
+  }
+}
+
+pump_stage_1()
+{
+  if(m_vFuelPersent3 > 35) // 35% = 6l
+    turn_on_pump_3();
+  else
+    pump_stage = 2;
+}
+pump_stage_2()
+{
+  if(m_vFuelPersent1 > 25){ // 25% = 4l
+    if(m_vFuelPersent3 > 5){
+      if((fl1 - fl3) > 10.5){ 
+        turn_on_pump_1();
+      } else if((fl1 - fl3) < 9.5){ 
+        turn_on_pump_3();
+      }
+    } else{ // m_vFuelPersent3 <= 5%
+      turn_on_pump_1();
+    }
+  } else{ // m_vFuelPersent1 <= 25%
+    pump_stage = 3;
+  }
+}
+pump_stage_3()
+{
+  if(m_vFuelPersent3 < 5){
+    if(m_vFuelPersent2 > 25){
+      turn_on_pump_2();
+    } else {
+      pump_stage = 4;
+    }
+  } else {
+    turn_on_pump_3();
+  }  
+}
+
+pump_stage_4()
+{
+  if(m_vFuelPersent3 < 5){
+    if(m_vFuelPersent1 > 5){
+      if(m_vFuelPersent2 > 5){
+        if((fl1 - fl2) > 0.5){
+          turn_on_pump_1();
+        } else if((fl1 - fl2) < -0.5){
+          turn_on_pump_2();
+        }
+      } else {
+        turn_on_pump_1();
+      }
+    } else if(m_vFuelPersent2 > 5){
+      turn_on_pump_2();
+    } else {
+      set_var(MANDALA_PUMP1, 0, true);
+      set_var(MANDALA_PUMP2, 0, true);
+    }
+  } else {
+    turn_on_pump_3();
+  }  
+}
+
 fuel_auto_control()
 {
-    if(m_vFuelPersent3 > 50 && !m_pump3) // > 50% in tank 3
-    {
-      set_var(MANDALA_PUMP3, 1, true);
+    switch (pump_stage) {
+      case 1: pump_stage_1();
+      case 2: pump_stage_2();
+      case 3: pump_stage_3();
+      case 4: pump_stage_4();
     }
-    else if (m_vFuelPersent1 > 50)  // > 50 % in tank 1 AND > 5% in tank 3
-    {
-      //1 and 3 must work alternately
-    }    
-    else if (m_vFuelPersent1 < 50)  // > 50 % in tank 1 AND > 5% in tank 3
-    {
-      //1 and 2 must work alternately
-    }
-    else
-    {
-      //get fuel from tank 2
-    }
-  //todo: turn on pump3 if tank3 >5%
 
 }
 
@@ -181,24 +275,31 @@ check_answer_time()
 @OnTask()
 {
     //test fuel sensor
-    /*new Float: ctr_thr = get_var(f_rc_throttle);
+    new Float: ctr_thr = get_var(f_rc_throttle);
     if(ctr_thr < 0.01)
       ctr_thr = 0.01;
-    set_var(f_user2, get_var(f_user2) - 0.05 * ctr_thr, true);
-    if(get_var(f_user2) < 0.1)
+    if(m_pump1) {
+      set_var(f_user1, get_var(f_user1) - 0.05 * ctr_thr, true);
+      if(get_var(f_user1) < 0.1)
+      set_var(f_user1, 0.1, true);
+    } else if(m_pump2) {
+      set_var(f_user2, get_var(f_user2) - 0.05 * ctr_thr, true);
+      if(get_var(f_user2) < 0.1)
       set_var(f_user2, 0.1, true);
-    if(m_pump1 && get_var(f_user1) > 0.01) {
-      //set_var(f_user1, get_var(f_user1) - 0.1, true);
-      vFuel1 -= 0.01;
-      set_var(f_user2, get_var(f_user2) + 0.01, true);
-    }*/
+    } else if(m_pump3) {
+      set_var(f_user3, get_var(f_user3) - 0.05 * ctr_thr, true);
+      if(get_var(f_user3) < 0.1)
+      set_var(f_user3, 0.1, true);
+    }
+    set_var(f_user3, get_var(f_user3) + 0.01, true);
+
 
     check_answer_time();
 
 
-    new Float: fl1 = get_var(MANDALA_FUEL_V1);
-    new Float: fl2 = get_var(MANDALA_FUEL_V2);
-    new Float: fl3 = get_var(MANDALA_FUEL_V3);
+    fl1 = get_var(MANDALA_FUEL_V1);
+    fl2 = get_var(MANDALA_FUEL_V2);
+    fl3 = get_var(MANDALA_FUEL_V3);
     set_var(MANDALA_FUEL, fl1 + fl2 + fl3, true);
 
     m_vFuelPersent1 = fl1 * 100 / V_MAX;
@@ -213,9 +314,9 @@ check_answer_time()
     m_ignition = get_var(MANDALA_IGNITION);
     m_algoritm = get_var(MANDALA_ALGORITM);
     m_ers = get_var(MANDALA_ERS);
-    //m_pump1 = get_var(MANDALA_PUMP1);
-    //m_pump2 = get_var(MANDALA_PUMP2);
-    //m_pump3 = get_var(MANDALA_PUMP3);
+    m_pump1 = get_var(MANDALA_PUMP1);
+    m_pump2 = get_var(MANDALA_PUMP2);
+    m_pump3 = get_var(MANDALA_PUMP3);
 
     if (m_ers){
           set_var(MANDALA_PUMP1, 0, true);
