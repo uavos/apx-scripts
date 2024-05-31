@@ -87,7 +87,7 @@ sendLookHereCommands()
     packFloat(data, 0, get_var(f_camctr_yaw));
     packFloat(data, 4, get_var(f_camctr_pitch));
 
-    new bool:result = serial_write(LOOKHERE_PORT_ID, data, LOOKHERE_DATA_SIZE, serialmode:NODE);
+    new bool:result = serial_write(LOOKHERE_PORT_ID, data, LOOKHERE_DATA_SIZE, serialmode:LAN);
     if(!result)
         printf("sendLookHereCommands error")
 }
