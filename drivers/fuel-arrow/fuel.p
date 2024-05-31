@@ -195,7 +195,7 @@ fuel_manual_control()
     //check time pump ON
     if(((time()-startTimerPumpON) > TIMER_MC * 1000) && m_pump1){
       printf("VM:Timer STOP...\n");
-      set_var(MANDALA_PUMP1, 0.0, true);
+      set_var(MANDALA_PUMP1, 0, true);
     }
 }
 
