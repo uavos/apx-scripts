@@ -62,7 +62,6 @@ main()
 {
     m_algoritmOld = false;
     m_ignitionOld = false;
-    //m_start_pump1 = false;
 
     set_var(MANDALA_PUMP1, 0, true);
     set_var(MANDALA_PUMP2, 0, true);
@@ -70,7 +69,7 @@ main()
 
     // 0 - fuel auto control
     // 1 - fuel manual control
-    //set_var(MANDALA_ALGORITM, 0.0, true);
+    set_var(MANDALA_ALGORITM, 0.0, true);
 
     serial_listen(PORT_RS485, "@sensorHandler");
 
@@ -81,16 +80,7 @@ main()
     return 0;
 }
 
-/*
-Float:interpolate(Float:val, Float:x_min, Float:x_max, Float:y_min, Float: y_max)
-{
-  // y = kx + b;
-  new Float: k = (y_max - y_min) / (x_max - x_min);
-  new Float: b = y_min - (x_min * k);
-  return val * k + b;
-}
-*/
-//---------------------------------------------------------------
+
 turn_off_all_pumps()
 {
   set_var(MANDALA_PUMP1, 0, true);
