@@ -4,8 +4,8 @@ using m_gyro_temp = Mandala<mandala::sns::nav::gyro::temp>;
 using m_rt = Mandala<mandala::sns::env::aux::rt>;
 
 //RPM
-const float PART_ERR{0.04f};
-const float K_DV{8.f};
+const float PART_ERR{0.02f};
+const float K_DV{7.98f};
 const uint8_t TRY_NUM{25};
 
 bool err1{};
@@ -211,6 +211,7 @@ EXPORT void on_rc_mode()
     bool on_rc_datalink = (m_t7::value() > 0.5f);
     bool on_rc_mode = (m_t6::value() > 0.5f);
     bool on_timer = ((time_ms() - rc_prev_timer) < 1200);
+    on_timer = true;
 
     if (on_rc_mode && on_rc_datalink && on_timer) {
         m_rc_mode::publish((uint32_t) mandala::rc_mode_manual);

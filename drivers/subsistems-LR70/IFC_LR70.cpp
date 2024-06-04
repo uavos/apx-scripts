@@ -496,7 +496,7 @@ void processVESCPackage(const uint32_t &msg_id, const uint8_t *data, VESC_CAN_Da
 {
     switch (msg_id) {
     case STATUS_MSG_1: {
-        vesc_data->rpm = int32_t((data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]) / 14;
+        vesc_data->rpm = int32_t((data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]);
         vesc_data->current = float(int16_t((data[4] << 8) | data[5])) / 10.f;
         vesc_data->duty = float(int16_t((data[6] << 8) | data[7])) / 10.f;
         break;
@@ -681,7 +681,7 @@ EXPORT void mcell()
     printf("C[5]: %.2f", _mcel.cell_volt(4));
     printf("C[6]: %.2f", _mcel.cell_volt(5));
     printf("C[7]: %.2f", _mcel.cell_volt(6));
-    printf("C[8]: %.2f", _mcel.cell_volt(7));
+    //printf("C[8]: %.2f", _mcel.cell_volt(7));
 
     //printf("C[9] %.2f", _mcel.cell_volt(8));
     //printf("C[10] %.2f", _mcel.cell_volt(9));
@@ -735,7 +735,7 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
 EXPORT void uvhpu()
 {
     printf("vbat: %.2f", _uvhpu.MSG1.vbat);
-    printf("iba: %.2f", _uvhpu.MSG1.ibat);
+    printf("ibat: %.2f", _uvhpu.MSG1.ibat);
     printf("imon: %.2f", _uvhpu.MSG1.imon);
 
     printf("vout: %.2f", _uvhpu.MSG2.vout);
@@ -780,7 +780,7 @@ EXPORT void on_can_aux(const uint8_t *data, size_t size)
         uint16_t msg_id = (can_id >> 8) & 0xFF;
         processVESCPackage(msg_id, can_data, &tail_data);
 
-        m_vesc_tail_rpm::publish((float) tail_data.rpm);
+        m_vesc_tail_rpm::publish((float) tail_data.rpm / 11);
         m_vesc_tail_current::publish(tail_data.current);
         m_vesc_tail_duty::publish(tail_data.duty);
         m_vesc_tail_temp_fet::publish(tail_data.temp_fet);
@@ -794,7 +794,7 @@ EXPORT void on_can_aux(const uint8_t *data, size_t size)
         uint16_t msg_id = (can_id >> 8) & 0xFF;
         processVESCPackage(msg_id, can_data, &gen_data);
 
-        m_vesc_gen_rpm::publish((float) abs(gen_data.rpm));
+        m_vesc_gen_rpm::publish((float) abs(gen_data.rpm) / 21);
         m_vesc_gen_fet_temp::publish(gen_data.temp_fet);
         m_vesc_gen_motor_temp::publish(gen_data.temp_mot);
         m_vesc_gen_curr_in::publish(fabs(gen_data.curr_in));
