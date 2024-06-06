@@ -15,7 +15,7 @@
 #define TIME_SA         2       //sec
 
 #define DELAY_MS        200
-#define DELAY_PUMP      5000 //msec  //change to 20s?
+#define DELAY_PUMP      15000 //msec  between different pumps
 
 //read
 new MANDALA_IGNITION = f_power_ignition;
@@ -77,6 +77,8 @@ main()
     set_var(f_user2, 15.7, true);
     set_var(f_user3, 15.7, true);
 
+    printf("fuel stage 1   ");
+
     return 0;
 }
 
@@ -135,8 +137,10 @@ pump_stage_1()
 {
   if(m_vFuelPersent3 > TANK_3_POINT) 
     turn_on_pump_3();
-  else
-    pump_stage = 2;
+  else {
+      pump_stage = 2;
+      printf("fuel stage: 2");
+  }
 }
 pump_stage_2()
 {
@@ -152,6 +156,7 @@ pump_stage_2()
     }
   } else{ 
     pump_stage = 3;
+    printf("fuel stage: 3");
   }
 }
 pump_stage_3()
@@ -161,6 +166,7 @@ pump_stage_3()
       turn_on_pump_2();
     } else {
       pump_stage = 4;
+      printf("fuel stage: 4");
     }
   } else {
     turn_on_pump_3();
@@ -247,7 +253,7 @@ check_answer_time()
 @OnTask()
 {
 //=========  test fuel sensor  ========================
-    new Float: ctr_thr = get_var(f_rc_throttle);
+/*    new Float: ctr_thr = get_var(f_rc_throttle);
     if(ctr_thr < 0.01)
       ctr_thr = 0.01;
     if(m_pump1) {
@@ -266,7 +272,7 @@ check_answer_time()
       set_var(f_user3, 0.1, true);
     }
     if(m_vFuelPersent3 < 100 && (m_pump1 || m_pump2 || m_pump3))
-      set_var(f_user3, get_var(f_user3) + 0.01 * ctr_thr, true);
+      set_var(f_user3, get_var(f_user3) + 0.01 * ctr_thr, true); */
 //=======================================================
 
     check_answer_time();
