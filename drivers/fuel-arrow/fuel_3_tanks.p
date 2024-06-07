@@ -31,9 +31,9 @@ new MANDALA_FUEL_V1 = f_user1;
 new MANDALA_FUEL_V2 = f_user2;
 new MANDALA_FUEL_V3 = f_user3;
 
-new MANDALA_WARN_ANSWER1 = f_radar_Vy;
-new MANDALA_WARN_ANSWER2 = f_radar_Vz;
-new MANDALA_WARN_ANSWER3 = f_radar_Vx;
+new MANDALA_WARN_ANSWER1 = f_radar_Vx;
+new MANDALA_WARN_ANSWER2 = f_radar_Vy;
+new MANDALA_WARN_ANSWER3 = f_radar_Vz;
 
 new msg{PACK_SIZE};
 new m_sensRequest = 0; // 0 - first sens, 1 - second, ect...
@@ -73,9 +73,9 @@ main()
 
     serial_listen(PORT_RS485, "@sensorHandler");
 
-    set_var(f_user1, 15.7, true);
-    set_var(f_user2, 15.7, true);
-    set_var(f_user3, 15.7, true);
+    //set_var(f_user1, 15.7, true);
+    //set_var(f_user2, 15.7, true);
+    //set_var(f_user3, 15.7, true);
 
     printf("fuel stage 1   ");
 
@@ -282,10 +282,6 @@ check_answer_time()
     new Float: fl3 = get_var(MANDALA_FUEL_V3);
     set_var(MANDALA_FUEL, fl1 + fl2 + fl3, true);
 
-    m_vFuelPersent1 = fl1 * 100 / V_MAX;
-    m_vFuelPersent2 = fl2 * 100 / V_MAX;
-    m_vFuelPersent3 = fl3 * 100 / V_MAX;
-
     m_ignition = get_var(MANDALA_IGNITION);
     m_algoritm = get_var(MANDALA_ALGORITM);
     m_ers = get_var(MANDALA_ERS);
@@ -347,21 +343,24 @@ forward @sensorHandler(cnt);
 
                 if(data{1} == ADR_SENS1) {
                     m_timeAns1 = time();
-                    new Float: m_vFuel1 = (data{4} | (data{5} << 8)) / 10.0;
+                    m_vFuelPersent1 = (data{4} | (data{5} << 8)) / 10.0;
+                    new Float: m_vFuel1 = m_vFuelPersent1 * V_MAX / 100.0;
                     set_var(MANDALA_FUEL_V1, m_vFuel1, true);
                     //printf("sens1: %f\r\n", m_vFuel1);
                 }
 
                 if(data{1} == ADR_SENS2) {
                     m_timeAns2 = time();
-                    new Float: m_vFuel2 = (data{4} | (data{5} << 8)) / 10.0;
+                    m_vFuelPersent2 = (data{4} | (data{5} << 8)) / 10.0;
+                    new Float: m_vFuel2 = m_vFuelPersent2 * V_MAX / 100.0;
                     set_var(MANDALA_FUEL_V2, m_vFuel2, true);
                     //printf("sens2: %f\r\n", m_vFuel2);
                 }
 
                 if(data{1} == ADR_SENS3) {
                     m_timeAns3 = time();
-                    new Float: m_vFuel3 = (data{4} | (data{5} << 8)) / 10.0;
+                    m_vFuelPersent3 = (data{4} | (data{5} << 8)) / 10.0;
+                    new Float: m_vFuel3 = m_vFuelPersent3 * V_MAX / 100.0;
                     set_var(MANDALA_FUEL_V3, m_vFuel3, true);
                     //printf("sens3: %f\r\n", m_vFuel3);
                 }
