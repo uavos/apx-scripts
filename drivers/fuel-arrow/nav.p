@@ -10,7 +10,7 @@ const SWIWIN_DATA_SIZE = 7;
 #define PORT_RS485      240
 #define ADR_SENS1       75
 #define ADR_SENS2       76
-#define ADR_SENS3       77 //???
+#define ADR_SENS3       77
 #define PACK_SIZE       9
 
 //editable
@@ -23,7 +23,6 @@ const SWIWIN_DATA_SIZE = 7;
 
 #define TIME_SA         2       //sec
 
-#define DELAY_MS        200
 #define DELAY_PUMP      15000 //msec  between different pumps
 
 //read
@@ -36,9 +35,9 @@ new MANDALA_PUMP1 = f_userb_2;
 new MANDALA_PUMP2 = f_userb_3;
 new MANDALA_PUMP3 = f_userb_4;
 new MANDALA_FUEL = f_fuel;
-new MANDALA_FUEL_V1 = f_user1;
-new MANDALA_FUEL_V2 = f_user2;
-new MANDALA_FUEL_V3 = f_user3;
+new MANDALA_FUEL_V1 = f_radar_dx;
+new MANDALA_FUEL_V2 = f_radar_dy;
+new MANDALA_FUEL_V3 = f_radar_dz;
 
 new MANDALA_WARN_ANSWER1 = f_radar_Vx;
 new MANDALA_WARN_ANSWER2 = f_radar_Vy;
@@ -208,9 +207,9 @@ main()
     set_var(MANDALA_PUMP2, 0, true);
     set_var(MANDALA_PUMP3, 0, true);
 
-    //set_var(f_user1, 15.7, true); //for debug only
-    //set_var(f_user2, 15.7, true); //for debug only
-    //set_var(f_user3, 15.7, true); //for debug only
+    //set_var(f_radar_dx, 15.7, true); //for debug only
+    //set_var(f_radar_dy, 15.7, true); //for debug only
+    //set_var(f_radar_dz, 15.7, true); //for debug only
 
     set_var(MANDALA_ALGORITM, 0, true); //0 - auto control, 1 - manual
 
@@ -938,22 +937,22 @@ fuel_proc()
     if(ctr_thr < 0.01)
       ctr_thr = 0.01;
     if(m_pump1) {
-      set_var(f_user1, get_var(f_user1) - 0.05 * ctr_thr, true);
-      if(get_var(f_user1) < 0.1)
-      set_var(f_user1, 0.1, true);
+      set_var(f_radar_dx, get_var(f_radar_dx) - 0.05 * ctr_thr, true);
+      if(get_var(f_radar_dx) < 0.1)
+      set_var(f_radar_dx, 0.1, true);
     }
     if(m_pump2) {
-      set_var(f_user2, get_var(f_user2) - 0.05 * ctr_thr, true);
-      if(get_var(f_user2) < 0.1)
-      set_var(f_user2, 0.1, true);
+      set_var(f_radar_dy, get_var(f_radar_dy) - 0.05 * ctr_thr, true);
+      if(get_var(f_radar_dy) < 0.1)
+      set_var(f_radar_dy, 0.1, true);
     }
     if(m_pump3) {
-      set_var(f_user3, get_var(f_user3) - 0.05 * ctr_thr, true);
-      if(get_var(f_user3) < 0.1)
-      set_var(f_user3, 0.1, true);
+      set_var(f_radar_dz, get_var(f_radar_dz) - 0.05 * ctr_thr, true);
+      if(get_var(f_radar_dz) < 0.1)
+      set_var(f_radar_dz, 0.1, true);
     }
     if(m_vFuelPersent3 < 100 && (m_pump1 || m_pump2 || m_pump3))
-      set_var(f_user3, get_var(f_user3) + 0.01 * ctr_thr, true); */
+      set_var(f_radar_dz, get_var(f_radar_dz) + 0.01 * ctr_thr, true); */
 //=======================================================
 
     check_answer_time();
