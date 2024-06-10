@@ -221,7 +221,7 @@ main()
 {
     new now = time();
 
-    if(now - g_time_safety >= 100){
+    if((now - g_time_safety >= 100) || g_ErsON){
         g_time_safety = now;
         safety_proc();
     }
@@ -295,7 +295,7 @@ safety_proc()
     new bool:is_vspeed = get_var(f_gps_Vdown) > ERS_VDOWN;
     new bool:is_takeoff = checkTakeOFFSefety();
     //new bool:is_takeoff = false;
-    if(get_var(f_altitude) < ERS_ALTITUDE && (is_vspeed || is_takeoff) && !get_var(f_ctrb_drp)){
+    if(get_var(f_altitude) < ERS_ALTITUDE && (is_vspeed || is_takeoff) && !get_var(f_ctrb_drp) && !g_ErsON){
         g_ErsON = true;
         set_var(f_ctrb_ers, 1, true);
         WAIT_TIME = 500;
@@ -311,7 +311,8 @@ safety_proc()
     if(get_var(f_ctrb_ers) || g_ErsON){
         g_ErsON = true;
         wait(WAIT_TIME); // задержка выпуска основного
-        while(g_ErsON){
+        WAIT_TIME = 0; 
+        if(g_ErsON){
             //выпуск основного парашюта
             new Float: altitude = get_var(f_altitude);
             if(!g_mainParachuteLockout && altitude < MAIN_PARACHUTE_ALTITUDE){
@@ -330,7 +331,7 @@ safety_proc()
                 printf("VM:LVS %d\n", lvs_release);
                 printf("VM:GMAX %d\n", gmax_release);
             }
-            wait(10);
+            return;
         }
     }
 
