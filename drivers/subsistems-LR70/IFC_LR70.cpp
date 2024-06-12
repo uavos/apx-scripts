@@ -189,8 +189,8 @@ using m_fan_consumption = Mandala<mandala::est::env::usrx::x9>; // +
 using m_fan_rpm = Mandala<mandala::est::env::usrx::x10>;        // +
 
 //uLanding
-using m_agl = Mandala<mandala::est::env::usr::u1>; // +
-using m_snr = Mandala<mandala::est::env::usr::u9>; // +
+using m_agl = Mandala<mandala::sns::nav::agl::radio>; // +
+using m_snr = Mandala<mandala::est::env::usr::u9>;    // +
 
 //Vesc tail
 using m_vesc_tail_rpm = Mandala<mandala::est::env::usrf::f5>;        // +

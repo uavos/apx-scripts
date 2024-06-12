@@ -53,7 +53,7 @@ using m_t4 = Mandala<mandala::ctr::env::tune::t4>; //sbus_pitch
 using m_t5 = Mandala<mandala::ctr::env::tune::t5>; //sbus_yaw
 using m_t6 = Mandala<mandala::ctr::env::tune::t6>; //sbus_rc_mode
 using m_t7 = Mandala<mandala::ctr::env::tune::t7>; //sbus_rc_datalink
-using m_t8 = Mandala<mandala::ctr::env::tune::t8>; //sbus_rc_chenge
+//using m_t8 = Mandala<mandala::ctr::env::tune::t8>;      //sbus_rc_chenge
 
 using m_rc_prop = Mandala<mandala::cmd::nav::rc::prop>;   //rc_prop
 using m_rc_roll = Mandala<mandala::cmd::nav::rc::roll>;   //rc_roll
@@ -66,17 +66,6 @@ bool reset_rc_data = false;
 float rc_prev_value{0.f};
 uint32_t rc_prev_timer{0};
 
-enum {
-    proc_mode_EMG = 0,
-    proc_mode_RPV = 1,
-    proc_mode_UAV = 2,
-    proc_mode_WPT = 3,
-    proc_mode_STBY = 4,
-    proc_mode_TAXI = 5,
-    proc_mode_TAKEOFF = 6,
-    proc_mode_LANDING = 7,
-};
-
 int main()
 {
     m_rpm_front();
@@ -87,13 +76,13 @@ int main()
     m_mode();
 
     m_rc_mode();
-    m_t2();               //prop
-    m_t3();               //roll
-    m_t4();               //pitch
-    m_t5();               //yaw
-    m_t6();               //mode
-    m_t7();               //datalink
-    m_t8("on_rc_change"); //change
+    m_t2(); //prop
+    m_t3(); //roll
+    m_t4(); //pitch
+    m_t5(); //yaw
+    m_t6(); //mode
+    m_t7(); //datalink
+    //m_t8("on_rc_change"); //change
 
     m_gyro_temp("on_gyro_temp"); // subscribe `on changed` event
     task("on_rpm", 25);          // 40 Hz
@@ -111,7 +100,7 @@ int main()
 
 EXPORT void on_mode()
 {
-    if ((uint8_t) m_mode::value() == proc_mode_TAXI) {
+    if ((uint8_t) m_mode::value() == mandala::proc_mode_TAXI) {
         m_on_hold::publish(0u);
     } else {
         m_on_hold::publish(1u);
@@ -198,6 +187,7 @@ EXPORT void on_rpm()
     m_sns_rpm::publish(rpm);
 }
 
+/*
 EXPORT void on_rc_change()
 {
     if (fabs(m_t8::value() - rc_prev_value) > 0.5f) {
@@ -205,13 +195,14 @@ EXPORT void on_rc_change()
         rc_prev_timer = time_ms();
     }
 }
+*/
 
 EXPORT void on_rc_mode()
 {
     bool on_rc_datalink = (m_t7::value() > 0.5f);
     bool on_rc_mode = (m_t6::value() > 0.5f);
-    bool on_timer = ((time_ms() - rc_prev_timer) < 1200);
-    on_timer = true;
+    //bool on_timer = ((time_ms() - rc_prev_timer) < 1200);
+    bool on_timer = true;
 
     if (on_rc_mode && on_rc_datalink && on_timer) {
         m_rc_mode::publish((uint32_t) mandala::rc_mode_manual);
