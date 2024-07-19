@@ -198,7 +198,7 @@ main()
 
     //swiwin
     serial_listen(SWIWIN_PORT_ID, "@OnSerialSWIWIN");
-    
+
     //fuel
     m_algoritmOld = false;
     m_ignitionOld = false;
@@ -311,7 +311,7 @@ safety_proc()
     if(get_var(f_ctrb_ers) || g_ErsON){
         g_ErsON = true;
         wait(WAIT_TIME); // задержка выпуска основного
-        WAIT_TIME = 0; 
+        WAIT_TIME = 0;
         if(g_ErsON){
             //выпуск основного парашюта
             new Float: altitude = get_var(f_altitude);
@@ -590,7 +590,11 @@ print_and_save_param()
         m_last_engine_status = m_engine_status;
     }
 
-    set_var(f_rpm, m_engine_rpm / 10, true);
+    if(m_engine_rpm < 4000) {
+        set_var(f_rpm, 0, true);
+    } else {
+        set_var(f_rpm, m_engine_rpm / 10, true);
+    }
     set_var(f_EGT, m_engine_temp, true);
     set_var(f_user5, m_throttle, true);
     set_var(f_Vm, m_pwr_cur_voltage / 10.0, true);
@@ -745,13 +749,13 @@ turn_on_pump_1()
   }
 }
 turn_on_pump_2()
-{    
+{
   if(time() > startTimerPumpON + DELAY_PUMP) {
     if(m_pump1 || m_pump3) {
       set_var(MANDALA_PUMP1, 0, true);
       set_var(MANDALA_PUMP3, 0, true);
       return; //wait 200ms till the next iteration
-    } 
+    }
     if(!m_pump2) {
       set_var(MANDALA_PUMP2, 1, true);
       startTimerPumpON = time();
@@ -775,7 +779,7 @@ turn_on_pump_3()
 
 pump_stage_1()
 {
-  if(m_vFuelPersent3 > TANK_3_POINT) 
+  if(m_vFuelPersent3 > TANK_3_POINT)
     turn_on_pump_3();
   else {
       pump_stage = 2;
@@ -786,15 +790,15 @@ pump_stage_2()
 {
   if(m_vFuelPersent1 > TANK_1_POINT){
     if(m_vFuelPersent3 > CRITICAL_LOW){
-      if(m_vFuelPersent1 > (m_vFuelPersent3 + 100 - TANK_3_POINT)){ 
+      if(m_vFuelPersent1 > (m_vFuelPersent3 + 100 - TANK_3_POINT)){
         turn_on_pump_1();
-      } else { 
+      } else {
         turn_on_pump_3();
       }
-    } else{ 
+    } else{
       turn_on_pump_1();
     }
-  } else{ 
+  } else{
     pump_stage = 3;
     printf("fuel stage: 3");
   }
@@ -810,7 +814,7 @@ pump_stage_3()
     }
   } else {
     turn_on_pump_3();
-  }  
+  }
 }
 pump_stage_4()
 {
@@ -832,7 +836,7 @@ pump_stage_4()
     }
   } else {
     turn_on_pump_3();
-  }  
+  }
 }
 
 fuel_auto_control()
@@ -993,7 +997,7 @@ fuel_proc()
           } else {
             printf("manual fuel OFF");
           }
-      } 
+      }
 
       if(!m_algoritm && m_ignition){
         fuel_auto_control();
@@ -1008,7 +1012,7 @@ fuel_proc()
     msg{3} = calcCrc(msg, 3);
     serial_write(PORT_RS485, msg, 4, serialmode:NODE);
 
-    m_sensRequest++; 
+    m_sensRequest++;
     if(m_sensRequest == 3)
       m_sensRequest = 0;
 }
