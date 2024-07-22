@@ -16,10 +16,10 @@ const SWIWIN_DATA_SIZE = 7;
 //editable
 #define V_MAX           15.7    //liters
 
-#define CRITICAL_LOW    5.0     // 5% = 0.8l
-#define TANK_1_POINT    25.0     // 25% = 3.9l
+#define CRITICAL_LOW    7.0     // 7% = 1.1l
+#define TANK_1_POINT    13.0     // 13% = 2l
 #define TANK_2_POINT    25.0     // 25% = 3.9l
-#define TANK_3_POINT    35.0     // 35% = 5.5l
+#define TANK_3_POINT    51.0     // 51% = 8l
 
 #define TIME_SA         2       //sec
 
@@ -734,6 +734,13 @@ turn_off_all_pumps()
   set_var(MANDALA_PUMP3, 0, true);
 }
 
+turn_on_all_pumps()
+{
+  set_var(MANDALA_PUMP1, 1, true);
+  set_var(MANDALA_PUMP2, 1, true);
+  set_var(MANDALA_PUMP3, 1, true);
+}
+
 turn_on_pump_1()
 {
   if(time() > startTimerPumpON + DELAY_PUMP) {
@@ -777,7 +784,7 @@ turn_on_pump_3()
   }
 }
 
-pump_stage_1()
+pump_stage_1() //get fuel from tank 3 untill the point
 {
   if(m_vFuelPersent3 > TANK_3_POINT)
     turn_on_pump_3();
@@ -786,7 +793,7 @@ pump_stage_1()
       printf("fuel stage: 2");
   }
 }
-pump_stage_2()
+pump_stage_2() //get fuel from tank 3 untill empty and from 1 untill the point  
 {
   if(m_vFuelPersent1 > TANK_1_POINT){
     if(m_vFuelPersent3 > CRITICAL_LOW){
@@ -803,7 +810,7 @@ pump_stage_2()
     printf("fuel stage: 3");
   }
 }
-pump_stage_3()
+pump_stage_3() //get fuel from tank 1 and 2 untill specified points  
 {
   if(m_vFuelPersent3 < CRITICAL_LOW){
     if(m_vFuelPersent2 > TANK_2_POINT){
@@ -816,7 +823,7 @@ pump_stage_3()
     turn_on_pump_3();
   }
 }
-pump_stage_4()
+pump_stage_4() //get fuel from tank 1 and 2 untill empty
 {
   if(m_vFuelPersent3 < CRITICAL_LOW){
     if(m_vFuelPersent1 > CRITICAL_LOW){
@@ -832,7 +839,7 @@ pump_stage_4()
     } else if(m_vFuelPersent2 > CRITICAL_LOW){
       turn_on_pump_2();
     } else {
-      turn_off_all_pumps();
+      turn_on_all_pumps();
     }
   } else {
     turn_on_pump_3();
@@ -991,10 +998,10 @@ fuel_proc()
 
       if(m_algoritm != m_algoritmOld){
           m_algoritmOld = m_algoritm;
-          turn_off_all_pumps();
           if(m_algoritm){
             printf("manual fuel ON");
           } else {
+            turn_off_all_pumps();
             printf("manual fuel OFF");
           }
       }
