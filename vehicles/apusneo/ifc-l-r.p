@@ -1100,3 +1100,9 @@ forward @vesc_2()
     print_vesc()
 }
 #endif
+//------------------------------------------------------------------------------------------
+forward @vm_status()
+@vm_status()
+{
+    printf("IFC-%s:Ok...\n", txt_dev);
+}

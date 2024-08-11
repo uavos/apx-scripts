@@ -23,13 +23,24 @@ new idx_vesc_mode = f_user6;            //+
 
 //-----------------------------OnTask------------------------------
 new vesc_timer = 0;
+vnew heater_timer = 0;
+
 const VESC_TIMEOUT = 100;
+const HEATER_TIMEOUT = 1000;
+
+//---------------------------temperature----------------------
+const idx_nav_temp =        f_RT;
+const idx_ctr_heater =      f_userb_2
+const START_HEATER =        10;
+
 
 new Float: ch_throttle = 0.0;
 
 main()
-{
-    vesc_timer = time();
+{   
+    new now = time();
+    vesc_timer = now;
+    heater_timer = now;
 }
 
 @OnTask()
@@ -86,6 +97,19 @@ main()
         }
     }
 
+    if (now - heater_timer > HEATER_TIMEOUT) {
+        heater_timer = now;
+
+        new RT = get_var(idx_nav_temp);
+        if (RT < START_HEATER) {
+            set_var(idx_ctr_heater, 1.0, true);
+        }
+
+        if (RT > START_HEATER * 1.5) {
+            set_var(idx_ctr_heater, 0.0, true);
+        }
+    }
+
     set_var(f_user3, get_var(f_ls_ail), true);
     set_var(f_user4, get_var(f_rs_ail), true);
 
@@ -108,4 +132,10 @@ setDuty(Float:val)
 {
     set_var(idx_vesc_mode, VESC_SET_DUTY, true);
     set_var(idx_vesc_control, val, true);
+}
+
+forward @vm_status()
+@vm_status()
+{
+    printf("NAV-C:Ok...\n");
 }

@@ -207,6 +207,12 @@ forward @reset_error()
     size_error = 0;
 }
 
+forward @vm_status()
+@vm_status()
+{
+    printf("MHX-%s:Ok...\n", txt_dev);
+}
+
 forward @tlm_f()
 @tlm_f()
 {
