@@ -11,10 +11,11 @@ new txt_dev{1} = "L"                            //L
 #define NODE_WING_ID            1               //L=1
 #define NODE_WING_REVERSE_ID    2               //R=2
 #define PORT_ID_CAN_AUX         20              //L=20
+
 #define CMD_PU1_H               10
 #define CMD_PU2_H               11
-#define CMD_PU1_P               14
-#define CMD_PU2_P               15
+#define CMD_SP1_T               14
+#define CMD_SP2_T               15
 #define CMD_SP1_K               18
 #define CMD_SP2_K               19
 #endif
@@ -28,10 +29,12 @@ new txt_dev{1} = "R"                            //R
 #define NODE_WING_ID            2               //R=2
 #define NODE_WING_REVERSE_ID    1               //R=1
 #define PORT_ID_CAN_AUX         70              //R=70
+
 #define CMD_PU1_H               12
 #define CMD_PU2_H               13
-#define CMD_PU1_P               16
-#define CMD_PU2_P               17
+
+#define CMD_SP1_T               16
+#define CMD_SP2_T               17
 #define CMD_SP1_K               20
 #define CMD_SP2_K               21
 #endif
@@ -122,8 +125,7 @@ new Float: mcell_max[CNT_DEV] = [0.0,];
 
 #define MPPT_CMD_POWER_ON       MPPT_ID + 10
 #define MPPT_CMD_K              MPPT_ID + 11
-
-#define MPPT_K                  0.7
+#define MPPT_CMD_TARGET_VOLT    MPPT_ID + 12
 
 //data
 new mppt_vin[CNT_DEV] = [0,];
@@ -132,6 +134,8 @@ new mppt_temp[CNT_DEV] = [0,];
 new mppt_status[CNT_DEV] = [0,];
 new Float: mppt_cin[CNT_DEV] = [0.0,];
 new Float: mppt_cout[CNT_DEV] = [0.0,];
+
+new mppt_target_volt[CNT_DEV] = [100,];
 
 new mppt_power_state = false;
 //--------------------vesc--------------------
@@ -291,6 +295,9 @@ main()
     if (now - save_timer > save_timeout) {
         save_timer = now;
         save_data_to_mandala();
+
+        set_target_volt(0, MPPT_CMD_TARGET_VOLT);
+        set_target_volt(1, MPPT_CMD_TARGET_VOLT);
     }
 
     if (now - g_tpTelemetryMsg > TELEMETRY_DELAY && g_needSendTelemetry) {
@@ -633,6 +640,15 @@ set_mppt_coefficient(id, Float: value)
     packFloat(msg, 0, value);
     sendCmdToCan(MPPT_CMD_K + id * MPPT_SHIFT, msg, 4);
 }
+
+set_target_volt(id, value)
+{
+    new msg{2};
+    value *= 100;
+    msg{0} = value;
+    msg{1} = value >> 8;
+    sendCmdToCan(MPPT_CMD_TARGET_VOLT + id * MPPT_SHIFT, msg, 2);
+}
 //------------------------------------------------------------------------------------------
 forwardPackage()
 {
@@ -797,11 +813,11 @@ forward @gcuHandler(cnt);
         case CMD_PU2_H: {
             send_cmd_heater(1, limit(serial_byte(1), 0, 30))
         }
-        case CMD_PU1_P: {
-            send_cmd_pump(0, limit(serial_byte(1), 0, 100))
+        case CMD_SP1_T: {
+            mppt_target_volt[0] = limit(serial_byte(1), 90, 110);
         }
-        case CMD_PU2_P: {
-            send_cmd_pump(1, limit(serial_byte(1), 0, 100))
+        case CMD_SP2_T: {
+            mppt_target_volt[1] = limit(serial_byte(1), 90, 110);
         }
         case CMD_SP1_K: {
             new Float: mppt_k = serial_byte(1) / 100.0;
@@ -1024,6 +1040,20 @@ forward @mppt_2()
     printf("MPPT-%s-2:\n", txt_dev);
     print_mppt(1);
 }
+
+forward @mppt1_rst()
+@mppt1_rst()
+{
+    mppt_target_volt[0] = 100;    
+    printf("VOLT[%]: %d\n", mppt_target_volt[0]);
+}
+
+forward @mppt2_rst()
+@mppt2_rst()
+{
+    mppt_target_volt[1] = 100;    
+    printf("VOLT[%]: %d\n", mppt_target_volt[1]);
+}
 #endif
 
 #if defined NODE_RIGHT
@@ -1039,6 +1069,20 @@ forward @mppt_4()
 {
     printf("MPPT-%s-4:\n", txt_dev);
     print_mppt(1);
+}
+
+forward @mppt3_rst()
+@mppt3_rst()
+{
+    mppt_target_volt[0] = 100;    
+    printf("VOLT[%]: %d\n", mppt_target_volt[0]);
+}
+
+forward @mppt4_rst()
+@mppt4_rst()
+{
+    mppt_target_volt[1] = 100;    
+    printf("VOLT[%]: %d\n", mppt_target_volt[1]);
 }
 #endif
 
