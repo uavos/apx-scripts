@@ -5,14 +5,14 @@
 #define NODE_ID             1
 #define MSG7_ID             6
 new txt_dev{1} = "L"
-const idx_ctr_heater =      f_userb_1
+const idx_ctr_heater =      f_userb_1;
 #endif
 
 #if defined NODE_RIGHT
 #define NODE_ID             2
 #define MSG7_ID             6
 new txt_dev{1} = "R"
-const idx_ctr_heater =      f_userb_3
+const idx_ctr_heater =      f_userb_3;
 #endif
 
 #define TASK_DELAY_MS       20
@@ -28,14 +28,14 @@ const idx_volz_ail_temp =   f_VM11;
 
 //---------------------------OnTask---------------------------
 new tlm_timer  = 0;
-vnew heater_timer = 0;
+new heater_timer = 0;
 
 const TLM_TIMEOUT = 100;
-const HEATER_TIMEOUT = 1000;
+const HEATER_TIMEOUT = 2000;
 
 //---------------------------telemetry------------------------
 const PACK_SIZE_MAX = 8;
-new g_tlmSize = 1 + 3 + 1;   //header + data + crc
+new g_tlmSize = 1 + 4 + 1;   //header + data + crc
 new g_wingTlmPack{PACK_SIZE_MAX};
 new send_error = 0;
 
@@ -60,11 +60,11 @@ main()
 
         new RT = get_var(idx_nav_temp);
         if (RT < START_HEATER) {
-            set_var(idx_ctr_heater, 1.0, true);
+            set_var(idx_ctr_heater, 1.0, false);
         }
 
         if (RT > START_HEATER * 1.5) {
-            set_var(idx_ctr_heater, 0.0, true);
+            set_var(idx_ctr_heater, 0.0, false);
         }
     }
 
@@ -92,8 +92,9 @@ send_wing_telemetry_data()
     //HEADER
     packByte(g_wingTlmPack, 0, (MSG7_ID | NODE_ID << 4 & 0xF0));
     packByte(g_wingTlmPack, 1, get_var(idx_nav_temp));        //nav temp
-    packByte(g_wingTlmPack, 2, get_var(idx_volz_ail_pos));    //volz pos
-    packByte(g_wingTlmPack, 3, get_var(idx_volz_ail_temp));   //volz temp
+    packByte(g_wingTlmPack, 2, get_var(idx_ctr_heater));      //heater on/off
+    packByte(g_wingTlmPack, 3, get_var(idx_volz_ail_pos));    //volz pos
+    packByte(g_wingTlmPack, 4, get_var(idx_volz_ail_temp));   //volz temp
 
     new crc = calcTelemetryCrc(g_wingTlmPack, g_tlmSize - 1);
     packByte(g_wingTlmPack, g_tlmSize - 1, crc);

@@ -47,7 +47,7 @@ new txt_dev{1} = "R"                            //R
 
 
 #define CAN_PACK_SIZE           13
-#define WING_PACK_SIZE          5
+#define WING_PACK_SIZE          6
 #define CNT_DEV                 2
 #define MSG7_ID                 6               //for nav-l and nav-r wing
 
@@ -151,6 +151,8 @@ new Float: vesc_ft =        0.0;
 new Float: vesc_mt =        0.0;
 new Float: vesc_crtin =     0.0;
 
+new Float: last_vesc_rpm =  0.0;
+
 //====================volz====================
 const idx_volz_sweep_pos =  f_VM10;
 const idx_volz_elv_pos =    f_VM11;
@@ -162,6 +164,11 @@ const idx_volz_rud_temp =   f_VM15;
 
 new volz_pos[4] = [0,];
 new volz_temp[4] = [0,];
+
+//====================pump====================
+const idx_fb_pump =  f_VM20;
+
+new fb_pump = 0;
 
 //============================================
 new g_tpUvhpuResponse[CNT_DEV] = [0,];
@@ -183,7 +190,7 @@ const TELEMETRY_DELAY = 40;
 
 const MSG1_SIZE = 1 + 49 + 1;           //header + data + crc
 const MSG2_SIZE = 1 + 49 + 1;           //header + data + crc
-const MSG3_SIZE = 1 + 17 + 1;           //header + data + crc
+const MSG3_SIZE = 1 + 18 + 1;           //header + data + crc
 
 const PACK_SIZE_MAX = 64;               //max pack size
 new g_telemetrySize = 0;
@@ -198,31 +205,32 @@ new bool:g_needSendTelemetry = false;
 //===================MandalaVar===============
 #if defined NODE_LEFT
 const idx_pu1_ibat_flt =    f_platform_lat;
-const idx_pu1_tbat =        f_radar_Vy;
 const idx_pu2_ibat_flt =    f_platform_lon;
-const idx_pu2_tbat =        f_radar_Vx;
 const idx_mc1_vbat =        f_platform_Vnorth;
 const idx_mc2_vbat =        f_Vp;
-const idx_vs1_rpm =         f_rpm;
-const idx_vs1_ft =          f_ils_heading;
-const idx_vs1_mt =          f_ET;
-const idx_vs1_crtin =       f_turret_pitch;
+const idx_vs_rpm =          f_rpm;
+const idx_vs_ft =           f_ils_heading;
+const idx_vs_mt =           f_ET;
+const idx_vs_crtin =        f_turret_pitch;
+const idx_wing_heat =       f_userb_1;
 #endif
 
 #if defined NODE_RIGHT
 const idx_pu3_ibat_flt =    f_platform_hmsl;
-const idx_pu3_tbat =        f_radar_Vz;
 const idx_pu4_ibat_flt =    f_platform_hdg;
 const idx_pu4_tbat =        f_range;
 const idx_mc3_vbat =        f_Vm;
 const idx_mc4_vbat =        f_platform_Veast;
-const idx_vs2_rpm =         f_platform_Vdown;
-const idx_vs2_ft =          f_ils_altitude;
-const idx_vs2_mt =          f_OT;
-const idx_vs2_crtin =       f_turret_heading;
+const idx_vs_rpm =          f_platform_Vdown;
+const idx_vs_ft =           f_ils_altitude;
+const idx_vs_mt =           f_OT;
+const idx_vs_crtin =        f_turret_heading;
+const idx_wing_heat =       f_userb_3;
 #endif
 
+//===================Wing Var=================
 new wing_nav_temp = 0;
+new wing_nav_heat_state = 0;
 
 //===================OnTask===================
 const forward_timeout = 100;
@@ -470,6 +478,7 @@ fillTelemetryPack()
         packByte(g_telemetryPack,   15, floatint(volz_pos[3]));
         packByte(g_telemetryPack,   16, floatint(volz_temp[3]));
         packByte(g_telemetryPack,   17, floatint(wing_nav_temp));
+        packByte(g_telemetryPack,   18, fb_pump / 100.0);
     }
 
     //CRC
@@ -643,6 +652,9 @@ forwardPackage()
     volz_temp[1] = get_var(idx_volz_sweep_temp);
     volz_temp[2] = get_var(idx_volz_elv_temp);
     volz_temp[3] = get_var(idx_volz_rud_temp);
+
+    //pump
+    fb_pump = get_var(idx_fb_pump);
 }
 //------------------------------------------------------------------------------------------
 send_tlm_mhx()
@@ -670,34 +682,33 @@ send_tlm_mhx()
 
 save_data_to_mandala()
 {
+    //vesc
+    if (vesc_rpm > 50 && vesc_rpm == last_vesc_rpm) {
+        vesc_rpm += 5;
+    }
+    last_vesc_rpm = vesc_rpm;
+    set_var(idx_vs_rpm, vesc_rpm, true);
+    set_var(idx_vs_ft, vesc_ft, true);
+    set_var(idx_vs_mt, vesc_mt+127, true);
+    set_var(idx_vs_crtin, vesc_crtin, true);
+
+    //wing
+    set_var(idx_wing_heat, wing_nav_heat_state, true);
+
 #if defined NODE_LEFT
     set_var(idx_pu1_ibat_flt, uvhpu_ibat_filt[0], true);
-    set_var(idx_pu1_tbat, uvhpu_tbat[0]/100.0, true);
     set_var(idx_pu2_ibat_flt, uvhpu_ibat_filt[1], true);
-    set_var(idx_pu2_tbat, uvhpu_tbat[1]/100.0, true);
 
     set_var(idx_mc1_vbat, mcell_vbat[0]/100.0, true);
     set_var(idx_mc2_vbat, mcell_vbat[1]/100.0, true);
-
-    set_var(idx_vs1_rpm, vesc_rpm, true);
-    set_var(idx_vs1_ft, vesc_ft, true);
-    set_var(idx_vs1_mt, vesc_mt+127, true);
-    set_var(idx_vs1_crtin, vesc_crtin, true);
 #endif
 
 #if defined NODE_RIGHT
     set_var(idx_pu3_ibat_flt, uvhpu_ibat_filt[0], true);
-    set_var(idx_pu3_tbat, uvhpu_tbat[0]/100.0, true);
     set_var(idx_pu4_ibat_flt, uvhpu_ibat_filt[1], true);
-    set_var(idx_pu4_tbat, uvhpu_tbat[1]/100.0, true);
 
     set_var(idx_mc3_vbat, mcell_vbat[0]/100.0, true);
     set_var(idx_mc4_vbat, mcell_vbat[1]/100.0, true);
-
-    set_var(idx_vs2_rpm, vesc_rpm, true);
-    set_var(idx_vs2_ft, vesc_ft, true);
-    set_var(idx_vs2_mt, vesc_mt+127, true);
-    set_var(idx_vs2_crtin, vesc_crtin, true);
 #endif
 
     send_tlm_mhx();
@@ -831,38 +842,13 @@ forward @wingHandler(cnt);
     }
 
     if(serial_byte(0) == (MSG7_ID | NODE_WING_ID<<4 & 0xF0)) {
-        wing_nav_temp = serial_byte(1); //nav temp
-        volz_pos[0] =   serial_byte(2); //volz pos
-        volz_temp[0] =  serial_byte(3); //volz temp
+        wing_nav_temp = serial_byte(1);       //nav temp
+        wing_nav_heat_state = serial_byte(2); //nav temp heater state
+        volz_pos[0] =   serial_byte(3);       //volz pos
+        volz_temp[0] =  serial_byte(4);       //volz temp
     }
 }
 //==========================================================================================
-forward @pump_on()
-@pump_on()
-{
-    printf("PUMP-ON-%s:\n", txt_dev);
-    new msg{2};
-    new value = 30 * 100.0;
-    msg{0} = value;
-    msg{1} = value >> 8;
-
-    sendCmdToCan(UVHPU_CMD_PUMP, msg, 2);
-    sendCmdToCan(UVHPU_CMD_PUMP + UVHPU_SHIFT, msg, 2);
-}
-
-forward @pump_off()
-@pump_off()
-{
-    printf("PUMP-OFF-%s:\n", txt_dev);
-    new msg{2};
-    new value = 0 * 100.0;
-    msg{0} = value;
-    msg{1} = value >> 8;
-
-    sendCmdToCan(UVHPU_CMD_PUMP, msg, 2);
-    sendCmdToCan(UVHPU_CMD_PUMP + UVHPU_SHIFT, msg, 2);
-}
-//------------------------------------------------------------------------------------------
 forward @pu_on()
 @pu_on()
 {
@@ -888,7 +874,6 @@ forward @pu_off()
 forward @pu_rb()
 @pu_rb()
 {
-    printf("PU-%s:100\n", txt_dev);
     new msg{1};
     new val = limit(get_var(f_ils_RF) * 100.0, 0.0, 100.0);
     printf("PU-%s:%d\n", txt_dev, val);
