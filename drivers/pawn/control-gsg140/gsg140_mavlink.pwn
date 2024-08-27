@@ -50,8 +50,8 @@ const Float:EXP_SCALE = 0.2;
 const POS_YAW_VAR = f_radar_dy;         //gimbal yaw in global coords
 const POS_PITCH_VAR = f_radar_dz;       //gimbal pitch in global coords
 const POS_ROLL_VAR = f_radar_dx;        //gimbal roll in global coords
-const FRAME_POS_YAW_VAR = f_user1;      //gimbal yaw in local coords
-const FRAME_POS_PITCH_VAR = f_user2;    //gimbal pitch in local coords
+const FRAME_POS_YAW_VAR = f_VM1;      //gimbal yaw in local coords
+const FRAME_POS_PITCH_VAR = f_VM2;    //gimbal pitch in local coords
 
 const FIXED_POS_YAW = 0;                //yaw pos in cam_mode=5
 const FIXED_POS_PITCH = -45;            //pitch pos in cam_mode=5
@@ -110,6 +110,7 @@ main()
     serial_listen(LOOKHERE_PORT_ID, "@OnLookHereCommands");
 
     print("GSG140: ready...\n")
+    wait(5000);
     sendRds();
 }
 
@@ -286,8 +287,8 @@ sendCommandLongControl()
     }
     else if(camMode == 2) //position
     {
-        yawCmd = get_var(f_camcmd_yaw) * g_yawCmdReverse;
-        pitchCmd = get_var(f_camcmd_pitch) * g_pitchCmdReverse;
+        yawCmd = bound(get_var(f_yaw) + get_var(f_camcmd_yaw)) * g_yawCmdReverse;
+        pitchCmd = (get_var(f_pitch) + get_var(f_camcmd_pitch)) * g_pitchCmdReverse;
         rollCmd = get_var(f_camcmd_roll) * g_rollCmdReverse;
     }
     else if(camMode == 3) //speed
@@ -298,7 +299,7 @@ sendCommandLongControl()
     }
     else if(camMode == 4) //target
     {
-        yawCmd = - bound(g_camctr_yaw * 180.0 - get_var(f_yaw));
+        yawCmd = - bound(g_camctr_yaw * 180.0);// - get_var(f_yaw));
         pitchCmd = g_camctr_pitch * 180.0 * g_pitchCmdReverse;
     }
     else if(camMode == 5) //fixed
