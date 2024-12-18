@@ -1,3 +1,8 @@
+// FIRMWARE 2.72.2 REQUIRED
+// Hardware/IMU Sensor Settings/Heading correction factor = 200
+// External IMU/ROLL and PITCH angles                     = Compensate for linear accelerations only
+// External IMU/YAW (heading) angle                       = Use as heading reference
+// External IMY/Yaw target angle is absolute              = Yes
 const PORT_ID = 30;
 const LOOKHERE_PORT_ID = 123;
 const LOOKHERE_DATA_SIZE = 8;
@@ -28,11 +33,8 @@ const GPI_EXTRA_CRC = 104;
 const COMMAND_LONG_ID = 76;
 const COMMAND_LONG_MSG_SIZE = 33;
 const COMMAND_LONG_EXTRA_CRC = 152;
-const RC_CHANNELS_RAW_ID = 35;
-const RC_CHANNELS_RAW_MSG_SIZE = 22;
-const RC_CHANNELS_RAW_EXTRA_CRC = 244;
 
-const Float:INPUT_TYPE_POS = 0.0;
+const Float:INPUT_TYPE_POS = 772.0;
 const Float:INPUT_TYPE_SPEED = 1.0;
 
 const HEARTBEAT_INTERVAL = 1000;
@@ -44,14 +46,12 @@ new g_tpLastGpi = 0;
 const COMMAND_LONG_INTERVAL = 20;
 new g_tpLastCommandLong = 0;
 
-const Float:E = 2.7182818284;
-const Float:EXP_SCALE = 0.2;
+const FEEDBACK_TIMEOUT = 5000;
+new g_tpLastFeedbackReceived = 0;
 
 const POS_YAW_VAR = f_radar_dy;         //gimbal yaw in global coords
 const POS_PITCH_VAR = f_radar_dz;       //gimbal pitch in global coords
 const POS_ROLL_VAR = f_radar_dx;        //gimbal roll in global coords
-const FRAME_POS_YAW_VAR = f_VM1;      //gimbal yaw in local coords
-const FRAME_POS_PITCH_VAR = f_VM2;    //gimbal pitch in local coords
 
 const FIXED_POS_YAW = 0;                //yaw pos in cam_mode=5
 const FIXED_POS_PITCH = -45;            //pitch pos in cam_mode=5
@@ -61,34 +61,14 @@ new g_lastCamMode = -1;
 
 new Float:g_yawOffset = 0.0;            //offset to yaw from gimbal
 new Float:g_pitchOffset = 0.0;          //offset to pitch from gimbal
+new Float:g_rollOffset = 0.0;           //offset to roll from gimbal
 new Float:g_yawPosReverse = -1.0;       //multiplier for yaw from gimbal
 new Float:g_pitchPosReverse = 1.0;      //multiplier for pitch from gimbal
+new Float:g_rollReverse = -1.0;         //multiplier for roll from gimbal
 new Float:g_yawCmdReverse = -1.0;       //multiplier for yaw commands
-new Float:g_rollCmdReverse = 1.0;       //multiplier for roll commands
 new Float:g_pitchCmdReverse = -1.0;     //multiplier for pitch commands
 new Float:g_camctr_yaw = 0.0;           //look here data from nav (yaw)
 new Float:g_camctr_pitch = 0.0;         //look here data from nav (pitch)
-
-Float:exp(Float:x)
-{
-    return floatpower(E, x);
-}
-
-Float:relax(Float:x)
-{
-    new Float:xabs = floatabs(x);
-    if(xabs < 0.00001)
-        return 0.0;
-    new Float:cam_zoom = get_var(f_cam_zoom);
-    new Float:zoomScale = (1.0 - cam_zoom) * (1.0 - cam_zoom);
-    if(zoomScale < 0.1)
-        zoomScale = 0.1;
-
-    new Float:out = (exp((xabs - 7) * EXP_SCALE) * zoomScale) / 3.0;
-    if(x < 0)
-        out = -out;
-    return out;
-}
 
 Float:bound(Float:a)
 {
@@ -108,10 +88,8 @@ main()
 {
     serial_listen(PORT_ID, "@OnSerial");
     serial_listen(LOOKHERE_PORT_ID, "@OnLookHereCommands");
-
-    print("GSG140: ready...\n")
-    wait(5000);
     sendRds();
+    g_tpLastFeedbackReceived = time();
 }
 
 crcAccumulate(data, crcAccum)
@@ -134,8 +112,7 @@ crcCalculate(pBuffer{}, length, offset)
 {
     new crcTmp = crcInit();
     new i = offset;
-    while(length--)
-    {
+    while(length--) {
         crcTmp = crcAccumulate(pBuffer{i}, crcTmp);
         i++;
     }
@@ -221,7 +198,7 @@ sendHearbeat()
     data{MAVLINK_HEADER_SIZE + 10} = crc >> 8;
     new bool:result = serial_write(PORT_ID, data, dataSize, serialmode:NODE);
     if(!result)
-        print("GSG140: sendHearbeat error");
+        print("Gimbal: sendHearbeat error");
 }
 
 sendAttitude()
@@ -233,16 +210,16 @@ sendAttitude()
     packFloat(data, MAVLINK_HEADER_SIZE + 4, get_var(f_roll) * D2R);    //roll
     packFloat(data, MAVLINK_HEADER_SIZE + 8, get_var(f_pitch) * D2R);   //pitch
     packFloat(data, MAVLINK_HEADER_SIZE + 12, get_var(f_yaw) * D2R);    //yaw
-    packFloat(data, MAVLINK_HEADER_SIZE + 16, get_var(f_p) * D2R);      //rollspeed
-    packFloat(data, MAVLINK_HEADER_SIZE + 20, get_var(f_q) * D2R);      //pitchspeed
-    packFloat(data, MAVLINK_HEADER_SIZE + 24, get_var(f_r) * D2R);      //yawspeed
+    packFloat(data, MAVLINK_HEADER_SIZE + 16, 0.0);                     //rollspeed
+    packFloat(data, MAVLINK_HEADER_SIZE + 20, 0.0);                     //pitchspeed
+    packFloat(data, MAVLINK_HEADER_SIZE + 24, 0.0);                     //yawspeed
     new crc = crcCalculate(data, MAVLINK_HEADER_SIZE + ATTITUDE_MSG_SIZE - 1, 1);
     crc = crcAccumulate(ATTITUDE_EXTRA_CRC, crc);
     data{MAVLINK_HEADER_SIZE + 28} = crc & 0xFF;
     data{MAVLINK_HEADER_SIZE + 29} = crc >> 8;
     new bool:result = serial_write(PORT_ID, data, dataSize, serialmode:NODE);
     if(!result)
-        print("GSG140: sendAttitude error");
+        print("Gimbal: sendAttitude error");
 }
 
 sendGpi()
@@ -265,7 +242,7 @@ sendGpi()
     data{MAVLINK_HEADER_SIZE + 29} = crc >> 8;
     new bool:result = serial_write(PORT_ID, data, dataSize, serialmode:NODE);
     if(!result)
-        print("sendGpi error");
+        print("Gimbal: sendGpi error");
 }
 
 sendCommandLongControl()
@@ -274,41 +251,28 @@ sendCommandLongControl()
     new Float:pitchCmd = 0.0
     new Float:rollCmd = 0.0
     new camMode = get_var(f_cam_mode);
-    if(camMode == 0) //camoff
-    {
+    if(camMode == 0) {
+        //camoff
         //maintain stow position from Shiva/Regulator/Gimbal
-        yawCmd = - get_var(f_camctr_yaw) * 180.0;
-        pitchCmd = - get_var(f_camctr_pitch) * 180.0;
-    }
-    else if(camMode == 1) //stab
-    {
-        yawCmd = - bound(get_var(f_cam_yaw) - get_var(f_yaw));
-        pitchCmd = - get_var(f_cam_pitch);
-    }
-    else if(camMode == 2) //position
-    {
+        yawCmd = get_var(f_camctr_yaw) * 180.0 * g_yawCmdReverse;
+        pitchCmd = get_var(f_camctr_pitch) * 180.0 * g_pitchCmdReverse;
+    } else if(camMode == 2) {
+        //position
         yawCmd = bound(get_var(f_yaw) + get_var(f_camcmd_yaw)) * g_yawCmdReverse;
         pitchCmd = (get_var(f_pitch) + get_var(f_camcmd_pitch)) * g_pitchCmdReverse;
-        rollCmd = get_var(f_camcmd_roll) * g_rollCmdReverse;
-    }
-    else if(camMode == 3) //speed
-    {
+    } else if(camMode == 3) {
+        //speed
         yawCmd = get_var(f_camcmd_yaw) * g_yawCmdReverse;
         pitchCmd = get_var(f_camcmd_pitch) * g_pitchCmdReverse;
-        rollCmd = get_var(f_camcmd_roll) * g_rollCmdReverse;
-    }
-    else if(camMode == 4) //target
-    {
-        yawCmd = - bound(g_camctr_yaw * 180.0);// - get_var(f_yaw));
+    } else if(camMode == 4) {
+        //target
+        yawCmd = bound(g_camctr_yaw * 180.0) * g_yawCmdReverse;
         pitchCmd = g_camctr_pitch * 180.0 * g_pitchCmdReverse;
-    }
-    else if(camMode == 5) //fixed
-    {
+    } else if(camMode == 5) {
+        //fixed
         yawCmd = FIXED_POS_YAW * g_yawCmdReverse;
         pitchCmd = FIXED_POS_PITCH * g_pitchCmdReverse;
-    }
-    else if(camMode == 6)
-    {
+    } else if(camMode == 6) {
         yawCmd = - bound(get_var(f_cmd_course) - get_var(f_yaw));
         pitchCmd = FIXED_POS_PITCH * g_pitchCmdReverse;
     }
@@ -333,7 +297,7 @@ sendCommandLongControl()
     data{MAVLINK_HEADER_SIZE + 34} = crc >> 8;
     new bool:result = serial_write(PORT_ID, data, dataSize, serialmode:NODE);
     if(!result)
-        print("GSG140: sendCommandLongError error");
+        print("Gimbal: sendCommandLongError error");
 }
 
 sendCommandLongConfigure(mode)
@@ -345,46 +309,20 @@ sendCommandLongConfigure(mode)
     packFloat(data, MAVLINK_HEADER_SIZE + 4, 1.0);
     packFloat(data, MAVLINK_HEADER_SIZE + 8, 1.0);
     packFloat(data, MAVLINK_HEADER_SIZE + 12, 1.0);
-    packFloat(data, MAVLINK_HEADER_SIZE + 16, 1.0);     //roll
-    packFloat(data, MAVLINK_HEADER_SIZE + 20, mode);    //pitch
-    packFloat(data, MAVLINK_HEADER_SIZE + 24, mode);    //yaw
-    packInt2(data, MAVLINK_HEADER_SIZE + 28, 204);      //command id
-    data{MAVLINK_HEADER_SIZE + 30} = 1;                 //target system id
-    data{MAVLINK_HEADER_SIZE + 31} = 154;               //target component id
-    data{MAVLINK_HEADER_SIZE + 32} = 0;                 //confirmation
+    packFloat(data, MAVLINK_HEADER_SIZE + 16, INPUT_TYPE_SPEED);     //roll
+    packFloat(data, MAVLINK_HEADER_SIZE + 20, mode);                 //pitch
+    packFloat(data, MAVLINK_HEADER_SIZE + 24, mode);                 //yaw
+    packInt2(data, MAVLINK_HEADER_SIZE + 28, 204);                   //command id
+    data{MAVLINK_HEADER_SIZE + 30} = 1;                              //target system id
+    data{MAVLINK_HEADER_SIZE + 31} = 154;                            //target component id
+    data{MAVLINK_HEADER_SIZE + 32} = 0;                              //confirmation
     new crc = crcCalculate(data, MAVLINK_HEADER_SIZE + COMMAND_LONG_MSG_SIZE - 1, 1);
     crc = crcAccumulate(COMMAND_LONG_EXTRA_CRC, crc);
     data{MAVLINK_HEADER_SIZE + 33} = crc & 0xFF;
     data{MAVLINK_HEADER_SIZE + 34} = crc >> 8;
     new bool:result = serial_write(PORT_ID, data, dataSize, serialmode:NODE);
     if(!result)
-        print("GSG140: sendCommandLongConfigure error");
-}
-
-sendRcChannelsRaw(value)
-{
-    const dataSize = MAVLINK_HEADER_SIZE + RC_CHANNELS_RAW_MSG_SIZE + MAVLINK_CRC_SIZE;
-    new data{dataSize};
-    fillHeader(data, RC_CHANNELS_RAW_ID, RC_CHANNELS_RAW_MSG_SIZE);
-    packInt(data, MAVLINK_HEADER_SIZE, time())
-    packInt2(data, MAVLINK_HEADER_SIZE + 4, value); //1
-    packInt2(data, MAVLINK_HEADER_SIZE + 6, 0);     //2
-    packInt2(data, MAVLINK_HEADER_SIZE + 8, 0);     //3
-    packInt2(data, MAVLINK_HEADER_SIZE + 10, 0);    //4
-    packInt2(data, MAVLINK_HEADER_SIZE + 12, 0);    //5
-    packInt2(data, MAVLINK_HEADER_SIZE + 14, 0);    //6
-    packInt2(data, MAVLINK_HEADER_SIZE + 16, 0);    //7
-    packInt2(data, MAVLINK_HEADER_SIZE + 18, 0);    //8
-    data{MAVLINK_HEADER_SIZE + 20} = 1;
-    data{MAVLINK_HEADER_SIZE + 21} = 255;
-
-    new crc = crcCalculate(data, MAVLINK_HEADER_SIZE + RC_CHANNELS_RAW_MSG_SIZE - 1, 1);
-    crc = crcAccumulate(RC_CHANNELS_RAW_EXTRA_CRC, crc);
-    data{MAVLINK_HEADER_SIZE + 22} = crc & 0xFF;
-    data{MAVLINK_HEADER_SIZE + 23} = crc >> 8;
-    new bool:result = serial_write(PORT_ID, data, dataSize, serialmode:NODE);
-    if(!result)
-        print("GSG140: sendRcChannelsRaw error");
+        print("Gimbal: sendCommandLongConfigure error");
 }
 
 sendRds()
@@ -404,63 +342,70 @@ sendRds()
     data{MAVLINK_HEADER_SIZE + 7} = crc >> 8;
     new bool:result = serial_write(PORT_ID, data, dataSize, serialmode:NODE);
     if(!result)
-        print("GSG140: sendRds error");
+        print("Gimbal: sendRds error");
 }
 
 @OnTask()
 {
     new now = time();
 
+    if(now - g_tpLastFeedbackReceived > FEEDBACK_TIMEOUT) {
+        sendRds();
+        g_tpLastFeedbackReceived = now;
+        print("Gimbal: no telemetry detected, request...")
+    }
+
     //default cam mode override
     new camMode = get_var(f_cam_mode);
-    if(g_lastCamMode != camMode)
-    {
+    if(g_lastCamMode != camMode) {
         g_lastCamMode = camMode;
 
         //position
-        if(camMode == 0) //camoff
-        {
+        if(camMode == 0) {          //camoff
             sendCommandLongConfigure(INPUT_TYPE_POS);
             sendCommandLongControl();
-        }
-        else if(camMode == 1) //stab
+            print("Gimbal: mode switched to camoff");
+        } else if(camMode == 2) {   //position
+            set_var(f_camcmd_yaw, 0.0, true);
+            set_var(f_camcmd_pitch, 0.0, true);
             sendCommandLongConfigure(INPUT_TYPE_POS);
-        else if(camMode == 2) //position
-            sendCommandLongConfigure(INPUT_TYPE_POS);
-        else if(camMode == 3) //speed
+            print("Gimbal: mode switched to position");
+        } else if(camMode == 3) {   //speed
+            set_var(f_camcmd_yaw, 0.0, true);
+            set_var(f_camcmd_pitch, 0.0, true);
             sendCommandLongConfigure(INPUT_TYPE_SPEED);
-        else if(camMode == 4) //target
+            print("Gimbal: mode switched to speed");
+        } else if(camMode == 4) {   //target
             sendCommandLongConfigure(INPUT_TYPE_POS);
-        else if(camMode == 5) //fixed
+            print("Gimbal: mode switched to look here");
+        } else if(camMode == 5) {   //fixed
             sendCommandLongConfigure(INPUT_TYPE_POS);
-        else if(camMode == 6)
+            print("Gimbal: mode switched to fixed");
+        } else if(camMode == 6) {
             sendCommandLongConfigure(INPUT_TYPE_POS);
-        else
-            printf("GSG140: unknown cam mode %d\n", camMode)
+            print("Gimbal: mode switched to course");
+        } else {
+            printf("Gimbal: unknown cam mode %d\n", camMode);
+        }
 
         sendAttitude();
         g_tpLastAttitude = now;
     }
 
-    if(now - g_tpLastHeartbeat > HEARTBEAT_INTERVAL)
-    {
+    if(now - g_tpLastHeartbeat > HEARTBEAT_INTERVAL) {
         sendHearbeat();
         g_tpLastHeartbeat = now;
     }
-    if(now - g_tpLastAttitude > ATTITUDE_INTERVAL)
-    {
+    if(now - g_tpLastAttitude > ATTITUDE_INTERVAL) {
         sendAttitude();
         g_tpLastAttitude = now;
     }
-    if(now - g_tpLastGpi > GPI_INTERVAL)
-    {
+    if(now - g_tpLastGpi > GPI_INTERVAL) {
         sendGpi();
         g_tpLastGpi = now;
     }
-    if(now - g_tpLastCommandLong > COMMAND_LONG_INTERVAL)
-    {
-        if(camMode >= 0 && camMode <= 6)
-        {
+    if(now - g_tpLastCommandLong > COMMAND_LONG_INTERVAL) {
+        if(camMode >= 0 && camMode <= 6) {
             sendCommandLongControl();
         }
         g_tpLastCommandLong = now;
@@ -473,49 +418,35 @@ forward @OnSerial(cnt)
 @OnSerial(cnt)
 {
     new data{200};
-    for(new i = 0; i < cnt; i++)
-    {
+    for(new i = 0; i < cnt; i++) {
         data{i} = serial_byte(i);
     }
     new msgid = data{IDX_MSGID};
     new crc1 = crcCalculate(data, cnt - 3, 1);
     crc1 = crcAccumulate(crc_get_extra(msgid), crc1);
     new crc2 = (data{cnt - 1} << 8) | (data{cnt - 2});
-    if(crc1 == crc2)
-    {
-        if(msgid == HEARTBEAT_ID)
-        {
+    if(crc1 == crc2) {
+        if(msgid == HEARTBEAT_ID) {
             //unused
-        }
-        else if(msgid == RDS_ID)
-        {
+        } else if(msgid == RDS_ID) {
             //unused
-        }
-        else if(msgid == ATTITUDE_ID)
-        {
+        } else if(msgid == ATTITUDE_ID) {
             new Float:rollPos = unpackFloat(data, MAVLINK_HEADER_SIZE + 4) * R2D;
             new Float:pitchPos = unpackFloat(data, MAVLINK_HEADER_SIZE + 8) * R2D;
             new Float:yawPos = unpackFloat(data, MAVLINK_HEADER_SIZE + 12) * R2D;
-            new Float:pitchSpeed = unpackFloat(data, MAVLINK_HEADER_SIZE + 20) * R2D;
-            new Float:yawSpeed = unpackFloat(data, MAVLINK_HEADER_SIZE + 24) * R2D;
 
             yawPos = (yawPos + g_yawOffset) * g_yawPosReverse;
             pitchPos = (pitchPos + g_pitchOffset) * g_pitchPosReverse;
+            rollPos = (rollPos + g_rollOffset) * g_rollReverse;
 
             set_var(POS_YAW_VAR, yawPos, true);
             set_var(POS_PITCH_VAR, pitchPos, true);
             set_var(POS_ROLL_VAR, rollPos, true);
-            set_var(FRAME_POS_YAW_VAR, yawPos - get_var(f_yaw), true);
-            set_var(FRAME_POS_PITCH_VAR, pitchPos, true);
+
+            g_tpLastFeedbackReceived = time();
+        } else {
+            printf("Gimbal: unknown message: %d\n", msgid);
         }
-        else
-        {
-            printf("GSG140: unknown message: %d\n", msgid);
-        }
-    }
-    else
-    {
-        //printf("GSG140: crc fail in message %d %d\n", msgid, cnt);
     }
 }
 
@@ -532,3 +463,4 @@ forward @OnLookHereCommands(cnt)
     g_camctr_yaw = unpackFloat(buffer, 0);
     g_camctr_pitch = unpackFloat(buffer, 4);
 }
+
