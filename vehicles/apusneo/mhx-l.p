@@ -30,7 +30,7 @@ new size_error =                0;
 
 new bool:g_SyncTelemetry =      true;
 
-new Float: TLM_DIV =            1.0;
+new TLM_DIV =                   4;
 
 //----------------------------tlmIfc------------------------------
 #define NODE_ID_IFC_L           3               //L=1
@@ -178,7 +178,7 @@ forward @vm_status()
 forward @tlm_f()
 @tlm_f()
 {
-    TLM_DIV = 0.5;
+    TLM_DIV = 2;
     new TIMEOUT = SCHEDULE_SYNC_TLM_TIMEOUT * TLM_DIV;
     g_SyncTelemetry = true;
     printf("MHX-%s: fast(%d)\n", txt_dev, TIMEOUT);
@@ -187,7 +187,7 @@ forward @tlm_f()
 forward @tlm_n()
 @tlm_n()
 {
-    TLM_DIV = 1.0;
+    TLM_DIV = 4;
     new TIMEOUT = SCHEDULE_SYNC_TLM_TIMEOUT * TLM_DIV;
     g_SyncTelemetry = true;
     printf("MHX-%s: normal(%d)\n", txt_dev, TIMEOUT);
@@ -196,7 +196,7 @@ forward @tlm_n()
 forward @tlm_l()
 @tlm_l()
 {
-    TLM_DIV = 5.0;
+    TLM_DIV = 8;
     new TIMEOUT = SCHEDULE_SYNC_TLM_TIMEOUT * TLM_DIV;
     g_SyncTelemetry = true;
     printf("MHX-%s: low(%d)\n", txt_dev, TIMEOUT);

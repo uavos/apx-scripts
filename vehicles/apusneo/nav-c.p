@@ -7,17 +7,18 @@
 //-----------------------------------------------------------------
 #define CURRENT_MAX             50.0
 #define START_CURRENT_BRAKE     0.5
-#define CURRENT_BRAKE           1.0     
-#define THR_CHANGE_RATE         10      
-#define BRAKE_CHANGE_RATE       0.1     
-#define BRAKE_MAX               7       
+#define CURRENT_BRAKE           1.0
+#define THR_START_CHANGE_RATE   5
+#define THR_CHANGE_RATE         25
+#define BRAKE_CHANGE_RATE       0.1
+#define BRAKE_MAX               7
 
 //---------------------------Speed Throttle------------------------
 new Float: air_brk = 0.0;
-new Float: prev_thr = 0.0;              
-new Float: delta_thr = 0.0;             
-new Float: out_thr = 0.0;               
-new Float: c_brake = 0.0;               
+new Float: prev_thr = 0.0;
+new Float: delta_thr = 0.0;
+new Float: out_thr = 0.0;
+new Float: c_brake = 0.0;
 new idx_vesc_control = f_user5;         //+
 new idx_vesc_mode = f_user6;            //+
 
@@ -25,7 +26,7 @@ new idx_vesc_mode = f_user6;            //+
 new vesc_timer = 0;
 new heater_timer = 0;
 
-const VESC_TIMEOUT = 100;
+const VESC_TIMEOUT = 50;
 const HEATER_TIMEOUT = 1000;
 
 //---------------------------temperature----------------------
@@ -37,7 +38,7 @@ const START_HEATER =        10;
 new Float: ch_throttle = 0.0;
 
 main()
-{   
+{
     new now = time();
     vesc_timer = now;
     heater_timer = now;
@@ -50,13 +51,18 @@ main()
     if (now - vesc_timer > VESC_TIMEOUT) {
         vesc_timer = now;
 
-        new Float: dt = VESC_TIMEOUT / 1000.0;                              
-        delta_thr = (THR_CHANGE_RATE / 100.0) * dt;
+        new Float: dt = VESC_TIMEOUT / 1000.0;
+
+        if(prev_thr < 0.1) {
+          delta_thr = (THR_START_CHANGE_RATE / 100.0) * dt;
+        } else {
+          delta_thr = (THR_CHANGE_RATE / 100.0) * dt;
+        }
 
         if (air_brk == 0) {
             out_thr = get_ch(0);                                            //throttle value from autopilot
             if(out_thr > prev_thr) {
-                if((out_thr - prev_thr) > delta_thr) {                      
+                if((out_thr - prev_thr) > delta_thr) {
                     out_thr = prev_thr + delta_thr;
                 }
             }
@@ -77,7 +83,7 @@ main()
             if (c_brake < BRAKE_MAX) {
                 c_brake += BRAKE_CHANGE_RATE;
             }
-            setCurrentBrake(c_brake);            
+            setCurrentBrake(c_brake);
         } else if (air_brake && (airspeed > 8) && !thr_cut) {
             c_brake = START_CURRENT_BRAKE;
 
@@ -93,7 +99,7 @@ main()
         }
 
         if (air_brake) {
-            prev_thr = 0.04;                
+            prev_thr = 0.04;
         }
     }
 
