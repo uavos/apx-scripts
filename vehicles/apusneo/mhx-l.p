@@ -1,6 +1,5 @@
 #define TASK_DELAY_MS     20
 
-#define PORT_ID_GCU_R     41
 #define PORT_ID_TLM_SYNC  42
 #define PORT_ID_MHX       44
 
@@ -52,10 +51,6 @@ const idx_vesc_pwr =            f_radar_dz;
 const LINK_AVAILABLE_TIMEOUT = 10;              //seconds
 new g_tpLastLinkAvailable;
 
-//----------------------------pu-balance---------------------------
-new cmd_pwr_bal = 0;
-
-
 bool:getLinkAvailable()
 {
     new Float:statusModem = get_var(f_status_modem);
@@ -68,20 +63,6 @@ bool:getLinkAvailable()
     return true;
 }
 
-Float:limit(Float: value, Float: min, Float: max)
-{
-    if(value < min) {
-        return min;
-    }
-
-    if(value > max) {
-      return max;
-    }
-
-    return value;
-}
-
-
 main()
 {
     new now = time();
@@ -91,7 +72,6 @@ main()
     g_tpLastLinkAvailable = now;
 
     serial_listen(PORT_ID_MHX,  "@tlmIfcHandler");
-    serial_listen(PORT_ID_GCU_R,  "@gcuHandler");
 }
 
 @OnTask()
@@ -176,24 +156,6 @@ forward @tlmIfcHandler(cnt)
 
     if (data{0} == (NODE_ID_IFC_R<<4 & 0xF0)) {
         processTlmIfcPackage(1, data);
-    }
-}
-
-forward @gcuHandler(cnt);
-@gcuHandler(cnt)
-{
-    if (cnt != 2) {
-        return;
-    }
-
-    new cmd = serial_byte(0);
-    switch (cmd & 0xFF) {
-        case CMD_PWR_BAL: {
-            new val = serial_byte(1);
-            if (val & 0x80)
-                val = (-1)*(0x100 - val);
-            cmd_pwr_bal = limit(val, -100, 100) * 10.0;
-        }
     }
 }
 

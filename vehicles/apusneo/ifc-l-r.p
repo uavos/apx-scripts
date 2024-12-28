@@ -135,7 +135,7 @@ new mppt_status[CNT_DEV] = [0,];
 new Float: mppt_cin[CNT_DEV] = [0.0,];
 new Float: mppt_cout[CNT_DEV] = [0.0,];
 
-new mppt_target_volt[CNT_DEV] = [100,];
+new mppt_target_volt[CNT_DEV] = [100,100];
 
 new mppt_power_state = false;
 //--------------------vesc--------------------
@@ -296,8 +296,8 @@ main()
         save_timer = now;
         save_data_to_mandala();
 
-        set_target_volt(0, MPPT_CMD_TARGET_VOLT);
-        set_target_volt(1, MPPT_CMD_TARGET_VOLT);
+        set_target_volt(0, mppt_target_volt[0]);
+        set_target_volt(1, mppt_target_volt[1]);
     }
 
     if (now - g_tpTelemetryMsg > TELEMETRY_DELAY && g_needSendTelemetry) {
@@ -547,15 +547,6 @@ processUVHPUPackage(can_id, uvhpu_id, data{})
             uvhpu_h_pwr[uvhpu_id] = unpackInt2(data, 6)/100.0;
         }
     }
-}
-
-send_cmd_pump(id, value)
-{
-    new msg{2};
-    value *= 100;
-    msg{0} = value;
-    msg{1} = value >> 8;
-    sendCmdToCan(UVHPU_CMD_PUMP + id * UVHPU_SHIFT, msg, 2);
 }
 
 send_cmd_heater(id, value)
@@ -1044,14 +1035,14 @@ forward @mppt_2()
 forward @mppt1_rst()
 @mppt1_rst()
 {
-    mppt_target_volt[0] = 100;    
+    mppt_target_volt[0] = 100;
     printf("VOLT[%]: %d\n", mppt_target_volt[0]);
 }
 
 forward @mppt2_rst()
 @mppt2_rst()
 {
-    mppt_target_volt[1] = 100;    
+    mppt_target_volt[1] = 100;
     printf("VOLT[%]: %d\n", mppt_target_volt[1]);
 }
 #endif
@@ -1074,14 +1065,14 @@ forward @mppt_4()
 forward @mppt3_rst()
 @mppt3_rst()
 {
-    mppt_target_volt[0] = 100;    
+    mppt_target_volt[0] = 100;
     printf("VOLT[%]: %d\n", mppt_target_volt[0]);
 }
 
 forward @mppt4_rst()
 @mppt4_rst()
 {
-    mppt_target_volt[1] = 100;    
+    mppt_target_volt[1] = 100;
     printf("VOLT[%]: %d\n", mppt_target_volt[1]);
 }
 #endif
@@ -1101,34 +1092,6 @@ forward @mppt_off()
         mppt_power_on(i, 0)
     }
 }
-//------------------------------------------------------------------------------------------
-print_vesc()
-{
-    printf("rpm: %d\n", vesc_rpm);
-    printf("crt: %.2f\n", vesc_crt);
-    printf("dt: %.2f\n", vesc_dc);
-    printf("ft: %.2f\n", vesc_ft);
-    printf("mt: %.2f\n", vesc_mt);
-    printf("crtin: %.2f\n", vesc_crtin);
-}
-
-#if defined NODE_LEFT
-forward @vesc_1()
-@vesc_1()
-{
-    printf("VESC-%s:\n", txt_dev);
-    print_vesc()
-}
-#endif
-
-#if defined NODE_RIGHT
-forward @vesc_2()
-@vesc_2()
-{
-    printf("VESC-%s:\n", txt_dev);
-    print_vesc()
-}
-#endif
 //------------------------------------------------------------------------------------------
 forward @vm_status()
 @vm_status()

@@ -23,7 +23,7 @@ new idx_vesc_mode = f_user6;            //+
 
 //-----------------------------OnTask------------------------------
 new vesc_timer = 0;
-vnew heater_timer = 0;
+new heater_timer = 0;
 
 const VESC_TIMEOUT = 100;
 const HEATER_TIMEOUT = 1000;
