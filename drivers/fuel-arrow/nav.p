@@ -14,12 +14,14 @@ const SWIWIN_DATA_SIZE = 7;
 #define PACK_SIZE       9
 
 //editable
-#define V_MAX           15.7    //liters
+#define V_MAX1          17.0    //liters
+#define V_MAX2          18.3    //liters
+#define V_MAX3          24.6    //liters
 
 #define CRITICAL_LOW    7.0     // 7% = 1.1l
 #define TANK_1_POINT    13.0     // 13% = 2l
-#define TANK_2_POINT    25.0     // 25% = 3.9l
-#define TANK_3_POINT    51.0     // 51% = 8l
+#define TANK_2_POINT    25.0     // 25% = 4.5l
+#define TANK_3_POINT    51.0     // 51% = 12.5l
 
 #define TIME_SA         2       //sec
 
@@ -810,7 +812,7 @@ pump_stage_2() //get fuel from tank 3 untill empty and from 1 untill the point
     printf("fuel stage: 3");
   }
 }
-pump_stage_3() //get fuel from tank 1 and 2 untill specified points  
+pump_stage_3() //get fuel from tank 2 untill specified points  
 {
   if(m_vFuelPersent3 < CRITICAL_LOW){
     if(m_vFuelPersent2 > TANK_2_POINT){
@@ -916,7 +918,7 @@ forward @sensorHandler(cnt);
                 if(data{1} == ADR_SENS1) {
                     m_timeAns1 = time();
                     m_vFuelPersent1 = (data{4} | (data{5} << 8)) / 10.0;
-                    new Float: m_vFuel1 = m_vFuelPersent1 * V_MAX / 100.0;
+                    new Float: m_vFuel1 = m_vFuelPersent1 * V_MAX1 / 100.0;
                     set_var(MANDALA_FUEL_V1, m_vFuel1, true);
                     //printf("sens1: %f\r\n", m_vFuel1);
                 }
@@ -924,7 +926,7 @@ forward @sensorHandler(cnt);
                 if(data{1} == ADR_SENS2) {
                     m_timeAns2 = time();
                     m_vFuelPersent2 = (data{4} | (data{5} << 8)) / 10.0;
-                    new Float: m_vFuel2 = m_vFuelPersent2 * V_MAX / 100.0;
+                    new Float: m_vFuel2 = m_vFuelPersent2 * V_MAX2 / 100.0;
                     set_var(MANDALA_FUEL_V2, m_vFuel2, true);
                     //printf("sens2: %f\r\n", m_vFuel2);
                 }
@@ -932,7 +934,7 @@ forward @sensorHandler(cnt);
                 if(data{1} == ADR_SENS3) {
                     m_timeAns3 = time();
                     m_vFuelPersent3 = (data{4} | (data{5} << 8)) / 10.0;
-                    new Float: m_vFuel3 = m_vFuelPersent3 * V_MAX / 100.0;
+                    new Float: m_vFuel3 = m_vFuelPersent3 * V_MAX3 / 100.0;
                     set_var(MANDALA_FUEL_V3, m_vFuel3, true);
                     //printf("sens3: %f\r\n", m_vFuel3);
                 }
@@ -974,9 +976,9 @@ fuel_proc()
     new Float: fl3 = get_var(MANDALA_FUEL_V3);
     set_var(MANDALA_FUEL, fl1 + fl2 + fl3, true);
 
-    //m_vFuelPersent1 = fl1 * 100 / V_MAX; //for debug only
-    //m_vFuelPersent2 = fl2 * 100 / V_MAX; //for debug only
-    //m_vFuelPersent3 = fl3 * 100 / V_MAX; //for debug only
+    //m_vFuelPersent1 = fl1 * 100 / V_MAX1; //for debug only
+    //m_vFuelPersent2 = fl2 * 100 / V_MAX2; //for debug only
+    //m_vFuelPersent3 = fl3 * 100 / V_MAX3; //for debug only
 
     m_ignition = get_var(MANDALA_IGNITION);
     m_algoritm = get_var(MANDALA_ALGORITM);
