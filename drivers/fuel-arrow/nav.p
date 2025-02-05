@@ -19,9 +19,9 @@ const SWIWIN_DATA_SIZE = 7;
 #define V_MAX3          24.6    //liters
 
 #define CRITICAL_LOW    7.0     // 7% = 1.1l
-#define TANK_1_POINT    13.0     // 13% = 2l
+#define TANK_1_POINT    20.0     // 20% = 3.4l
 #define TANK_2_POINT    25.0     // 25% = 4.5l
-#define TANK_3_POINT    51.0     // 51% = 12.5l
+#define TANK_3_POINT    60.0     // 60% = 14.7l
 
 #define TIME_SA         2       //sec
 
