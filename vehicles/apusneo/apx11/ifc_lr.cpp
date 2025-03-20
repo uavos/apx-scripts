@@ -4,22 +4,22 @@
 //#define IFC_RIGHT              TRUE            //R-TRUE L-comment
 
 #if defined IFC_LEFT
-constexpr const char txt_dev{'L'};  //L
-constexpr const uint8_t NODE_ID{3}; //L=1
-constexpr const uint8_t MSG1_ID{0}; //L=0
-constexpr const uint8_t MSG2_ID{1}; //L=1
-constexpr const uint8_t MSG3_ID{2}; //L=2
-//constexpr const uint8_t NODE_WING_ID{1};         //L=1
+constexpr const char *txt_dev = "L";           //L
+constexpr const uint8_t NODE_ID{3};            //L=1
+constexpr const uint8_t MSG1_ID{0};            //L=0
+constexpr const uint8_t MSG2_ID{1};            //L=1
+constexpr const uint8_t MSG3_ID{2};            //L=2
+constexpr const uint8_t NODE_WING_ID{1};       //L=1
 constexpr const port_id_t PORT_ID_CAN_AUX{20}; //L=20 //CAN   1Mb
 #endif
 
 #if defined IFC_RIGHT
-constexpr const char txt_dev{'R'};  //R
-constexpr const uint8_t NODE_ID{4}; //R=2
-constexpr const uint8_t MSG1_ID{3}; //R=3
-constexpr const uint8_t MSG2_ID{4}; //R=4
-constexpr const uint8_t MSG3_ID{5}; //R=5
-//constexpr const uint8_t NODE_WING_ID{2};         //R=2
+constexpr const char *txt_dev = "R";           //R
+constexpr const uint8_t NODE_ID{4};            //R=2
+constexpr const uint8_t MSG1_ID{3};            //R=3
+constexpr const uint8_t MSG2_ID{4};            //R=4
+constexpr const uint8_t MSG3_ID{5};            //R=5
+constexpr const uint8_t NODE_WING_ID{2};       //R=2
 constexpr const port_id_t PORT_ID_CAN_AUX{70}; //R=70 //CAN   1Mb
 #endif
 
@@ -36,8 +36,8 @@ constexpr const port_id_t PORT_ID_WING{43};
 //--------------------------size---------------------------
 constexpr const uint8_t CNT_DEV{2};
 constexpr const uint8_t PACK_CAN_SIZE{12};
-//constexpr const uint8_t PACK_WING_SIZE{6};
-//constexpr const uint8_t MSG7_ID{6}; //for nav-l and nav-r wing
+constexpr const uint8_t PACK_WING_SIZE{7};
+constexpr const uint8_t MSG7_ID{6}; //for nav-l and nav-r wing
 //---------------------------------------------------------
 
 //--------------------------uvhpu--------------------------
@@ -62,65 +62,43 @@ struct UVHPU
 {
     struct
     {
-        int16_t vbat;
+        float vbat;
         float ibat;
-        int16_t imon;
-    } MSG1;
+        float imon;
+    } msg1;
     struct
     {
-        int16_t vout;
-        int16_t tbat;
-        int16_t pbat;
-        int16_t status;
-    } MSG2;
+        float vout;
+        float tbat;
+        float pbat;
+        float status;
+    } msg2;
     struct
     {
         float cbat;
         float ebat;
-    } MSG3;
+    } msg3;
     struct
     {
         float res_bar;
         float v_res;
-    } MSG4;
+    } msg4;
     struct
     {
         float ibat_flt;
         float vbat_flt;
-    } MSG5;
+    } msg5;
     struct
     {
         float cbat_res;
         float ebat_res;
-    } MSG6;
+    } msg6;
     struct
     {
         int16_t life_cycles;
         float cbat_mod;
         int16_t h_pwr;
-    } MSG7;
-
-    void *get_msg(const uint32_t &id)
-    {
-        switch (id) {
-        case UVHPU_PACK1:
-            return &MSG1;
-        case UVHPU_PACK2:
-            return &MSG2;
-        case UVHPU_PACK3:
-            return &MSG3;
-        case UVHPU_PACK4:
-            return &MSG4;
-        case UVHPU_PACK5:
-            return &MSG5;
-        case UVHPU_PACK6:
-            return &MSG6;
-        case UVHPU_PACK7:
-            return &MSG7;
-        }
-
-        return nullptr;
-    };
+    } msg7;
 };
 #pragma pack()
 
@@ -134,33 +112,16 @@ constexpr const uint16_t MCELL_SHIFT{20};
 constexpr const uint16_t MCELL_PACK1{MCELL_ID + 1};
 constexpr const uint16_t MCELL_PACK2{MCELL_ID + 2};
 constexpr const uint16_t MCELL_PACK3{MCELL_ID + 3};
-constexpr const uint16_t MCELL_PACK4{MCELL_ID + 4};
 
 #pragma pack(1)
 struct MCELL
 {
-    int16_t vbat;
-    int16_t tbat;
-    int16_t tpcb;
+    float vbat;
+    float tbat;
+    float tpcb;
     uint8_t status;
-    uint16_t cell[12] = {};
-    float cell_volt(uint8_t cell_idx) { return cell[cell_idx] / 1000.f; };
-
-    void *get_msg(const uint32_t &id)
-    {
-        switch (id) {
-        case MCELL_PACK1:
-            return &vbat;
-        case MCELL_PACK2:
-            return cell;
-        case MCELL_PACK3:
-            return cell + 4;
-        case MCELL_PACK4:
-            return cell + 8;
-        }
-
-        return nullptr;
-    };
+    uint16_t cell[8] = {};
+    float cell_volt(const uint8_t &cell_idx) { return cell[cell_idx] / 1000.f; };
 };
 #pragma pack()
 
@@ -178,12 +139,25 @@ uint32_t t_vescResponse{};
 
 constexpr const uint16_t DEVICE_TIMEOUT{3000};
 
-bool responseState[11] = {}; //uvhpu1, mcell1, mppt1, uvhpu2, mcell2, mppt2, vesc, volz[4]
+bool responseState[12] = {}; //uvhpu1, mcell1, mppt1, uvhpu2, mcell2, mppt2, vesc, volz[5]
 
 uint8_t size_error_gcu = 0;
 uint8_t size_error_sync = 0;
 uint8_t size_error_wing = 0;
-//---------------------------------------------------------
+//----------------------------------------------------------
+
+//-------------------------Wing-----------------------------
+#pragma pack(1)
+struct WING_DATA
+{
+    int8_t volz_pos[2];
+    int8_t volz_temp[2];
+    int8_t gyro_temp;
+};
+#pragma pack()
+
+WING_DATA _wing = {};
+//----------------------------------------------------------
 
 //----------------------Telemetry---------------------------
 constexpr const uint8_t TELEMETRY_SEND_DELAY_MS{40};
@@ -315,6 +289,24 @@ int main()
 
     task("reset_error"); //GCS with terminal command `vmexec("reset_error")`
 
+#if defined IFC_LEFT
+    task("mcell_1"); //GCS with terminal command `vmexec("mcell_1")`
+    task("mcell_2"); //GCS with terminal command `vmexec("mcell_2")`
+
+    task("uvhpu_1"); //GCS with terminal command `vmexec("uvhpu_1")`
+    task("uvhpu_2"); //GCS with terminal command `vmexec("uvhpu_2")`
+#endif
+
+#if defined IFC_RIGHT
+    task("mcell_3"); //GCS with terminal command `vmexec("mcell_3")`
+    task("mcell_4"); //GCS with terminal command `vmexec("mcell_4")`
+
+    task("uvhpu_3"); //GCS with terminal command `vmexec("uvhpu_3")`
+    task("uvhpu_4"); //GCS with terminal command `vmexec("uvhpu_4")`
+#endif
+
+    task("wing"); //GCS with terminal command `vmexec("wing")`
+
     task("on_task", TASK_DELAY_MS);                 //50 Hz
     task("on_save_mandala", SAVE_MANDALA_DELAY_MS); //10 Hz
 
@@ -350,46 +342,55 @@ uint8_t calcTelemetryCRC(const uint8_t *data, uint8_t size)
     return crc;
 }
 
+int16_t unpackInt16(const uint8_t *data, uint8_t index)
+{
+    return (int16_t) (data[index] | (data[index + 1] << 8));
+}
+
 void packMsg1(const uint8_t &idx)
 {
-    t_ifc_lr_msg1 msg1 = {};
+    t_ifc_lr_msg1 msg = {};
 
-    msg1.uvhpu_online = responseState[idx * 3 + 0];
-    msg1.mcell_online = responseState[idx * 3 + 1];
-    msg1.mppt_online = responseState[idx * 3 + 2];
+    msg.uvhpu_online = responseState[idx * 3 + 0];
+    msg.mcell_online = responseState[idx * 3 + 1];
+    msg.mppt_online = responseState[idx * 3 + 2];
 
     //uvhpu
+    auto *uvhpu = &_uvhpu[idx];
+
     //pack 2
-    msg1.uvhpu.vout = _uvhpu[idx].MSG2.vout;
-    msg1.uvhpu.tbat = _uvhpu[idx].MSG2.tbat;
-    msg1.uvhpu.status = (uint8_t) _uvhpu[idx].MSG2.status;
+    msg.uvhpu.vout = (int16_t) (uvhpu->msg2.vout * 100.f);
+    msg.uvhpu.tbat = (int16_t) (uvhpu->msg2.tbat * 100.f);
+    msg.uvhpu.status = (uint8_t) uvhpu->msg2.status;
     //pack 3
-    msg1.uvhpu.cbat = (int32_t) _uvhpu[idx].MSG3.cbat;
-    msg1.uvhpu.ebat = (int32_t) (_uvhpu[idx].MSG3.ebat * 100.f);
+    msg.uvhpu.cbat = (int32_t) uvhpu->msg3.cbat;
+    msg.uvhpu.ebat = (int32_t) (uvhpu->msg3.ebat * 100.f);
     //pack 4
-    msg1.uvhpu.res_bat = (uint16_t) (_uvhpu[idx].MSG4.res_bar * 100.f);
-    msg1.uvhpu.v_res = (uint16_t) (_uvhpu[idx].MSG4.v_res * 100.f);
+    msg.uvhpu.res_bat = (uint16_t) (uvhpu->msg4.res_bar * 100.f);
+    msg.uvhpu.v_res = (uint16_t) (uvhpu->msg4.v_res * 100.f);
     //pack 5
-    msg1.uvhpu.ibat_flt = (int16_t) (_uvhpu[idx].MSG5.ibat_flt * 100.f);
+    msg.uvhpu.ibat_flt = (int16_t) (uvhpu->msg5.ibat_flt * 100.f);
     //pack 7
-    msg1.uvhpu.h_pwr = _uvhpu[idx].MSG7.h_pwr;
+    msg.uvhpu.h_pwr = uvhpu->msg7.h_pwr;
 
-    //uvhpu
+    //mcell
+    auto *mcell = &_mcell[idx];
+
     //pack 1
-    msg1.mcell.vbat = int16_t(_mcell[idx].vbat);
-    msg1.mcell.tbat = int8_t(_mcell[idx].tbat / 100.f);
-    msg1.mcell.tpcb = int8_t(_mcell[idx].tpcb / 100.f);
-    msg1.mcell.status = _mcell[idx].status;
+    msg.mcell.vbat = int16_t(mcell->vbat);
+    msg.mcell.tbat = int8_t(mcell->tbat * 100.f);
+    msg.mcell.tpcb = int8_t(mcell->tpcb * 100.f);
+    msg.mcell.status = mcell->status;
     //pack 2
-    msg1.mcell.c1 = _mcell[idx].cell[0];
-    msg1.mcell.c2 = _mcell[idx].cell[1];
-    msg1.mcell.c3 = _mcell[idx].cell[2];
-    msg1.mcell.c4 = _mcell[idx].cell[3];
+    msg.mcell.c1 = mcell->cell[0];
+    msg.mcell.c2 = mcell->cell[1];
+    msg.mcell.c3 = mcell->cell[2];
+    msg.mcell.c4 = mcell->cell[3];
     //pack 3
-    msg1.mcell.c5 = _mcell[idx].cell[4];
-    msg1.mcell.c6 = _mcell[idx].cell[5];
+    msg.mcell.c5 = mcell->cell[4];
+    msg.mcell.c6 = mcell->cell[5];
 
-    memcpy(&telemetryPack[1], &msg1, sizeof(t_ifc_lr_msg1));
+    memcpy(&telemetryPack[1], &msg, sizeof(t_ifc_lr_msg1));
 }
 
 void fillTelemetryPack()
@@ -443,6 +444,71 @@ EXPORT void on_save_mandala()
     saveDataToMandala();
 }
 
+void processUVHPUackage(const uint32_t &can_id, const uint8_t *data, const uint8_t &idx)
+{
+    auto *uvhpu = &_uvhpu[idx];
+
+    switch (can_id) {
+    case UVHPU_PACK1: {
+        uvhpu->msg1.vbat = (float) unpackInt16(data, 0) / 100.f;
+        memcpy(&uvhpu->msg1.ibat, data + 2, 4);
+        uvhpu->msg1.imon = (float) unpackInt16(data, 6) / 100.f;
+        break;
+    }
+    case UVHPU_PACK2: {
+        uvhpu->msg2.vout = (float) unpackInt16(data, 0) / 100.f;
+        uvhpu->msg2.tbat = (float) unpackInt16(data, 2) / 100.f;
+        uvhpu->msg2.pbat = (float) unpackInt16(data, 4);
+        uvhpu->msg2.status = data[7];
+        break;
+    }
+    case UVHPU_PACK3: {
+        memcpy(&uvhpu->msg3.cbat, data, 8);
+        break;
+    }
+    case UVHPU_PACK4: {
+        memcpy(&uvhpu->msg4.res_bar, data, 8);
+        break;
+    }
+    case UVHPU_PACK5: {
+        memcpy(&uvhpu->msg5.ibat_flt, data, 8);
+        break;
+    }
+    case UVHPU_PACK6: {
+        memcpy(&uvhpu->msg6.cbat_res, data, 8);
+        break;
+    }
+    case UVHPU_PACK7: {
+        uvhpu->msg7.life_cycles = unpackInt16(data, 0);
+        memcpy(&uvhpu->msg7.cbat_mod, data + 2, 4);
+        break;
+    }
+    }
+}
+
+void processMCELLPackage(const uint32_t &can_id, const uint8_t *data, const uint8_t &idx)
+{
+    auto *mcell = &_mcell[idx];
+
+    switch (can_id) {
+    case MCELL_PACK1: {
+        mcell->vbat = (float) unpackInt16(data, 0) / 100.f;
+        mcell->tbat = (float) unpackInt16(data, 2) / 100.f;
+        mcell->tpcb = (float) unpackInt16(data, 4) / 100.f;
+        mcell->status = data[7];
+        break;
+    }
+    case MCELL_PACK2: {
+        memcpy(mcell->cell, data, 8);
+        break;
+    }
+    case MCELL_PACK3: {
+        memcpy(mcell->cell + 4, data, 8);
+        break;
+    }
+    }
+}
+
 EXPORT void canAuxHandler(const uint8_t *data, size_t size)
 {
     if (size != PACK_CAN_SIZE) {
@@ -464,8 +530,6 @@ EXPORT void canAuxHandler(const uint8_t *data, size_t size)
         t_vescResponse = now;
     }
 
-    void *msg = nullptr;
-
     //CAN ID 0XFFFF
     switch (can_id & 0xFFFF) {
     case UVHPU_PACK1:
@@ -477,7 +541,7 @@ EXPORT void canAuxHandler(const uint8_t *data, size_t size)
     case UVHPU_PACK7: {
         //printf("uvhpu %x", can_id);
         t_uvhpuResponse[0] = now;
-        msg = _uvhpu[0].get_msg(can_id);
+        processUVHPUackage(can_id, can_data, 0);
         break;
     }
     case UVHPU_PACK1 + 1 * UVHPU_SHIFT:
@@ -489,31 +553,27 @@ EXPORT void canAuxHandler(const uint8_t *data, size_t size)
     case UVHPU_PACK7 + 1 * UVHPU_SHIFT: {
         //printf("uvhpu %x", can_id);
         t_uvhpuResponse[1] = now;
-        msg = _uvhpu[1].get_msg(can_id);
+        can_id -= 1 * UVHPU_SHIFT;
+        processUVHPUackage(can_id, can_data, 1);
         break;
     }
     case MCELL_PACK1:
     case MCELL_PACK2:
-    case MCELL_PACK3:
-    case MCELL_PACK4: {
+    case MCELL_PACK3: {
         //printf("mcell %x", can_id);
         t_mcellResponse[0] = now;
-        msg = _mcell[0].get_msg(can_id);
+        processMCELLPackage(can_id, can_data, 0);
         break;
     }
     case MCELL_PACK1 + 1 * MCELL_SHIFT:
     case MCELL_PACK2 + 1 * MCELL_SHIFT:
-    case MCELL_PACK3 + 1 * MCELL_SHIFT:
-    case MCELL_PACK4 + 1 * MCELL_SHIFT: {
+    case MCELL_PACK3 + 1 * MCELL_SHIFT: {
         //printf("mcell %x", can_id);
         t_mcellResponse[1] = now;
-        msg = _mcell[1].get_msg(can_id);
+        can_id -= 1 * MCELL_SHIFT;
+        processMCELLPackage(can_id, can_data, 1);
         break;
     }
-    }
-
-    if (msg) {
-        memcpy(msg, data, 8);
     }
 }
 
@@ -543,8 +603,15 @@ EXPORT void gcuHandler(const uint8_t *data, size_t size)
 
 EXPORT void wingHandler(const uint8_t *data, size_t size)
 {
-    (void) data;
-    (void) size;
+    if (size != PACK_WING_SIZE && size_error_wing++ < 3) {
+        printf("IFC-%s, wrong telemetry wing packet\n", txt_dev);
+        return;
+    }
+
+    //TODO CRC
+    if (data[0] == (MSG7_ID | ((NODE_WING_ID << 4) & 0xF0))) {
+        memcpy(&_wing, &data[1], sizeof(WING_DATA));
+    }
 }
 
 EXPORT void reset_error()
@@ -556,4 +623,108 @@ EXPORT void reset_error()
     size_error_sync = 0;
     size_error_gcu = 0;
     size_error_wing = 0;
+}
+
+void print_mcell(const uint8_t &idx)
+{
+    printf("v_bat: %.2f", _mcell[idx].vbat);
+    printf("t_bat: %.2f", _mcell[idx].tbat);
+    printf("t_pcb: %.2f", _mcell[idx].tpcb);
+    printf("state: %u", _mcell[idx].status);
+
+    printf("C[1]: %.2f", _mcell[idx].cell_volt(0));
+    printf("C[2]: %.2f", _mcell[idx].cell_volt(1));
+    printf("C[3]: %.2f", _mcell[idx].cell_volt(2));
+    printf("C[4]: %.2f", _mcell[idx].cell_volt(3));
+
+    printf("C[5]: %.2f", _mcell[idx].cell_volt(4));
+    printf("C[6]: %.2f", _mcell[idx].cell_volt(5));
+}
+
+EXPORT void mcell_1()
+{
+    printf("IFC-%s, mcell_1...\n", txt_dev);
+    print_mcell(0);
+}
+
+EXPORT void mcell_2()
+{
+    printf("IFC-%s, mcell_2...\n", txt_dev);
+    print_mcell(1);
+}
+
+EXPORT void mcell_3()
+{
+    printf("IFC-%s, mcell_3...\n", txt_dev);
+    print_mcell(0);
+}
+
+EXPORT void mcell_4()
+{
+    printf("IFC-%s, mcell_4...\n", txt_dev);
+    print_mcell(1);
+}
+
+void print_uvhpu(const uint8_t &idx)
+{
+    printf("vbat: %.2f", _uvhpu[idx].msg1.vbat);
+    printf("ibat: %.2f", _uvhpu[idx].msg1.ibat);
+    printf("imon: %.2f", _uvhpu[idx].msg1.imon);
+
+    printf("vout: %.2f", _uvhpu[idx].msg2.vout);
+    printf("tbat: %.2f", _uvhpu[idx].msg2.tbat);
+    printf("pbat: %.2f", _uvhpu[idx].msg2.pbat);
+    printf("status: %u", _uvhpu[idx].msg2.status);
+
+    printf("cbat: %.2f", _uvhpu[idx].msg3.cbat);
+    printf("ebat: %.2f", _uvhpu[idx].msg3.ebat);
+
+    printf("res_bar: %.2f", _uvhpu[idx].msg4.res_bar);
+    printf("v_res: %.2f", _uvhpu[idx].msg4.v_res);
+
+    printf("ibat_filt: %.2f", _uvhpu[idx].msg5.ibat_flt);
+    printf("vbat_filt: %.2f", _uvhpu[idx].msg5.vbat_flt);
+
+    printf("cbat_res: %.2f", _uvhpu[idx].msg6.cbat_res);
+    printf("ebat_res: %.2f", _uvhpu[idx].msg6.ebat_res);
+
+    printf("life_cycles: %u", _uvhpu[idx].msg7.life_cycles);
+    printf("cbat_mod: %.2f", _uvhpu[idx].msg7.cbat_mod);
+}
+
+EXPORT void uvhpu_1()
+{
+    printf("IFC-%s, uvhpu_1...\n", txt_dev);
+    print_uvhpu(0);
+}
+
+EXPORT void uvhpu_2()
+{
+    printf("IFC-%s, uvhpu_2...\n", txt_dev);
+    print_uvhpu(1);
+}
+
+EXPORT void uvhpu_3()
+{
+    printf("IFC-%s, uvhpu_3...\n", txt_dev);
+    print_uvhpu(0);
+}
+
+EXPORT void uvhpu_4()
+{
+    printf("IFC-%s, uvhpu_4...\n", txt_dev);
+    print_uvhpu(1);
+}
+
+EXPORT void wing()
+{
+    printf("IFC-%s, wing...\n", txt_dev);
+
+    printf("v_pos1: %d", _wing.volz_pos[0]);
+    printf("v_pos2: %d", _wing.volz_pos[1]);
+
+    printf("v_temp1: %d", _wing.volz_temp[0]);
+    printf("v_temp2: %d", _wing.volz_temp[1]);
+
+    printf("nav_temp: %d", _wing.gyro_temp);
 }
