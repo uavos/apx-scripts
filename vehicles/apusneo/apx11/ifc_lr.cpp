@@ -1,9 +1,9 @@
 #include <apx.h>
 
-#define IFC_LEFT TRUE //L-TRUE R-comment
-//#define IFC_RIGHT              TRUE            //R-TRUE L-comment
+#define NODE_LEFT TRUE //ifc-l
+//#define NODE_RIGHT TRUE //ifc-r
 
-#if defined IFC_LEFT
+#if defined NODE_LEFT
 constexpr const char *txt_dev = "L";           //L
 constexpr const uint8_t NODE_ID{3};            //L=1
 constexpr const uint8_t MSG1_ID{0};            //L=0
@@ -13,7 +13,7 @@ constexpr const uint8_t NODE_WING_ID{1};       //L=1
 constexpr const port_id_t PORT_ID_CAN_AUX{20}; //L=20 //CAN   1Mb
 #endif
 
-#if defined IFC_RIGHT
+#if defined NODE_RIGHT
 constexpr const char *txt_dev = "R";           //R
 constexpr const uint8_t NODE_ID{4};            //R=2
 constexpr const uint8_t MSG1_ID{3};            //R=3
@@ -36,7 +36,7 @@ constexpr const port_id_t PORT_ID_WING{43};
 //--------------------------size---------------------------
 constexpr const uint8_t CNT_DEV{2};
 constexpr const uint8_t PACK_CAN_SIZE{12};
-constexpr const uint8_t PACK_WING_SIZE{7};
+constexpr const uint8_t PACK_WING_SIZE{9};
 constexpr const uint8_t MSG7_ID{6}; //for nav-l and nav-r wing
 //---------------------------------------------------------
 
@@ -53,7 +53,7 @@ constexpr const uint16_t UVHPU_PACK7{UVHPU_ID + 7};
 
 //constexpr const uint16_t UVHPU_CMD_HEATER{UVHPU_ID + 10};
 //constexpr const uint16_t UVHPU_CMD_PUMP{UVHPU_ID + 11};
-//constexpr const uint16_t UVHPU_CMD_PON{UVHPU_ID + 12};
+constexpr const uint16_t UVHPU_CMD_PON{UVHPU_ID + 12};
 //constexpr const uint16_t UVHPU_CMD_RB{UVHPU_ID + 13};
 
 //data
@@ -71,7 +71,7 @@ struct UVHPU
         float vout;
         float tbat;
         float pbat;
-        float status;
+        uint8_t status;
     } msg2;
     struct
     {
@@ -150,8 +150,8 @@ uint8_t size_error_wing = 0;
 #pragma pack(1)
 struct WING_DATA
 {
-    int8_t volz_pos[2];
     int8_t volz_temp[2];
+    uint16_t volz_pos[2];
     int8_t gyro_temp;
 };
 #pragma pack()
@@ -287,25 +287,29 @@ int main()
 
     t_telemetryMsg = now;
 
-    task("reset_error"); //GCS with terminal command `vmexec("reset_error")`
+    //task("reset_error"); //GCS with terminal command `vmexec("reset_error")`
+    task("pu_on");  //GCS with terminal command `vmexec("pu_on")`
+    task("pu_off"); //GCS with terminal command `vmexec("pu_off")`
 
-#if defined IFC_LEFT
-    task("mcell_1"); //GCS with terminal command `vmexec("mcell_1")`
+#if defined NODE_LEFT
+    //task("mcell_1"); //GCS with terminal command `vmexec("mcell_1")`
     task("mcell_2"); //GCS with terminal command `vmexec("mcell_2")`
 
-    task("uvhpu_1"); //GCS with terminal command `vmexec("uvhpu_1")`
+    //task("uvhpu_1"); //GCS with terminal command `vmexec("uvhpu_1")`
     task("uvhpu_2"); //GCS with terminal command `vmexec("uvhpu_2")`
+
+    task("wing_l"); //GCS with terminal command `vmexec("wing")`
 #endif
 
-#if defined IFC_RIGHT
+#if defined NODE_RIGHT
     task("mcell_3"); //GCS with terminal command `vmexec("mcell_3")`
     task("mcell_4"); //GCS with terminal command `vmexec("mcell_4")`
 
     task("uvhpu_3"); //GCS with terminal command `vmexec("uvhpu_3")`
     task("uvhpu_4"); //GCS with terminal command `vmexec("uvhpu_4")`
-#endif
 
-    task("wing"); //GCS with terminal command `vmexec("wing")`
+    task("wing_r"); //GCS with terminal command `vmexec("wing")`
+#endif
 
     task("on_task", TASK_DELAY_MS);                 //50 Hz
     task("on_save_mandala", SAVE_MANDALA_DELAY_MS); //10 Hz
@@ -444,6 +448,25 @@ EXPORT void on_save_mandala()
     saveDataToMandala();
 }
 
+EXPORT void sendCmdToCan(const uint32_t &can_id, const uint8_t *data, const uint8_t &size)
+{
+    uint8_t msg[PACK_CAN_SIZE] = {};
+
+    msg[0] = (uint8_t) can_id;         //ID_0_7
+    msg[1] = (uint8_t) (can_id >> 8);  //ID_8_15
+    msg[2] = (uint8_t) (can_id >> 16); //ID_16_23
+    msg[3] = (uint8_t) (can_id >> 24); //ID_24_31
+
+    if (can_id > 0x7FF)
+        msg[3] = msg[3] | 0x80;
+
+    for (uint8_t i = 0; i < size; i++) {
+        msg[4 + i] = data[i];
+    }
+
+    send(PORT_ID_CAN_AUX, msg, 4 + size, false);
+}
+
 void processUVHPUackage(const uint32_t &can_id, const uint8_t *data, const uint8_t &idx)
 {
     auto *uvhpu = &_uvhpu[idx];
@@ -459,7 +482,7 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data, const uint8
         uvhpu->msg2.vout = (float) unpackInt16(data, 0) / 100.f;
         uvhpu->msg2.tbat = (float) unpackInt16(data, 2) / 100.f;
         uvhpu->msg2.pbat = (float) unpackInt16(data, 4);
-        uvhpu->msg2.status = data[7];
+        uvhpu->msg2.status = data[6];
         break;
     }
     case UVHPU_PACK3: {
@@ -716,15 +739,46 @@ EXPORT void uvhpu_4()
     print_uvhpu(1);
 }
 
-EXPORT void wing()
+EXPORT void wing_l()
 {
     printf("IFC-%s, wing...\n", txt_dev);
-
-    printf("v_pos1: %d", _wing.volz_pos[0]);
-    printf("v_pos2: %d", _wing.volz_pos[1]);
 
     printf("v_temp1: %d", _wing.volz_temp[0]);
     printf("v_temp2: %d", _wing.volz_temp[1]);
 
+    printf("v_pos1: %u", _wing.volz_pos[0]);
+    printf("v_pos2: %u", _wing.volz_pos[1]);
+
     printf("nav_temp: %d", _wing.gyro_temp);
+}
+
+EXPORT void wing_r()
+{
+    printf("IFC-%s, wing...\n", txt_dev);
+
+    printf("v_temp1: %d", _wing.volz_temp[0]);
+    printf("v_temp2: %d", _wing.volz_temp[1]);
+
+    printf("v_pos1: %u", _wing.volz_pos[0]);
+    printf("v_pos2: %u", _wing.volz_pos[1]);
+
+    printf("nav_temp: %d", _wing.gyro_temp);
+}
+
+EXPORT void pu_on()
+{
+    printf("IFC-%s, pu-on...\n", txt_dev);
+    uint8_t msg[1] = {1};
+
+    sendCmdToCan(UVHPU_CMD_PON, msg, 1);
+    sendCmdToCan(UVHPU_CMD_PON + UVHPU_SHIFT, msg, 1);
+}
+
+EXPORT void pu_off()
+{
+    printf("IFC-%s, pu-ff...\n", txt_dev);
+    uint8_t msg[1] = {0};
+
+    sendCmdToCan(UVHPU_CMD_PON, msg, 1);
+    sendCmdToCan(UVHPU_CMD_PON + UVHPU_SHIFT, msg, 1);
 }

@@ -1,7 +1,7 @@
 #include <apx.h>
 
-#define NODE_LEFT TRUE //L-TRUE R-comment
-//#define NODE_RIGHT              TRUE            //R-TRUE L-comment
+#define NODE_LEFT TRUE //nav-l
+//#define NODE_RIGHT TRUE //nav-r
 
 #if defined NODE_LEFT
 constexpr const char *txt_dev = "L"; //L
@@ -17,30 +17,42 @@ constexpr const uint8_t MSG7_ID{6};
 
 constexpr const port_id_t PORT_ID_WING{43};
 
-constexpr const uint16_t TASK_DELAY_MS{100}; //10Hz
+constexpr const uint16_t TASK_TELEMETRY_MS{100}; //10Hz
+constexpr const uint16_t TASK_HEATER_MS{2000};   //0.5Hz
 
 //----------------------Telemetry---------------------------
-constexpr const uint8_t MSG7_SIZE = 1 + 5 + 1; //header + data + crc
-uint8_t telemetryPack[MSG7_SIZE] = {};
-//----------------------------------------------------------
-
-using m_f1 = Mandala<mandala::est::env::usrf::f1>; //volz pos
-using m_f2 = Mandala<mandala::est::env::usrf::f2>; //volz pos
-using m_f3 = Mandala<mandala::est::env::usrf::f3>; //volz temp
-using m_f4 = Mandala<mandala::est::env::usrf::f4>; //volz temp
-
-using m_sns_temp = Mandala<mandala::sns::nav::gyro::temp>; //gyro temp
 
 #pragma pack(1)
 struct WING_DATA
 {
-    int8_t volz_pos[2];
+    uint8_t header;
     int8_t volz_temp[2];
+    uint16_t volz_pos[2];
     int8_t gyro_temp;
+    uint8_t crc;
 };
 #pragma pack()
 
 WING_DATA _wing = {};
+
+//----------------------Temperature-------------------------
+constexpr const uint16_t START_HEATER{10};
+
+#if defined NODE_LEFT
+using m_sw = Mandala<mandala::ctr::env::sw::sw1>; //heater off/on
+#endif
+
+#if defined NODE_RIGHT
+using m_sw = Mandala<mandala::ctr::env::sw::sw5>; //heater off/on
+#endif
+
+//----------------------Mandala------------------------------
+using m_f1 = Mandala<mandala::est::env::usrf::f1>; //volz temp
+using m_f2 = Mandala<mandala::est::env::usrf::f2>; //volz temp
+using m_f3 = Mandala<mandala::est::env::usrf::f3>; //volz pos
+using m_f4 = Mandala<mandala::est::env::usrf::f4>; //volz pos
+
+using m_sns_temp = Mandala<mandala::sns::nav::gyro::temp>; //gyro temp
 
 int main()
 {
@@ -51,7 +63,10 @@ int main()
 
     m_sns_temp();
 
-    task("on_task", TASK_DELAY_MS); //10 Hz
+    m_sw();
+
+    task("on_telemetry", TASK_TELEMETRY_MS); //10 Hz
+    task("on_heater", TASK_HEATER_MS);       //0.5 Hz
 
     printf("NAV-WING:%s Script ready...\n", txt_dev);
 
@@ -69,28 +84,33 @@ uint8_t calcTelemetryCRC(const uint8_t *data, uint8_t size)
     return crc;
 }
 
-void sendWingTelemetry()
+EXPORT void on_telemetry()
 {
     //header
-    telemetryPack[0] = MSG7_ID | ((NODE_ID << 4) & 0xF0);
+    _wing.header = MSG7_ID | ((NODE_ID << 4) & 0xF0);
 
     //data
-    memcpy(&telemetryPack[1], &_wing, sizeof(WING_DATA));
-
-    //crc
-    uint8_t crc = calcTelemetryCRC(telemetryPack, MSG7_SIZE - 1);
-    telemetryPack[MSG7_SIZE - 1] = crc;
-
-    send(PORT_ID_WING, telemetryPack, MSG7_SIZE, true);
-}
-
-EXPORT void on_task()
-{
-    _wing.volz_pos[0] = (int8_t) m_f1::value();
-    _wing.volz_pos[1] = (int8_t) m_f2::value();
-    _wing.volz_temp[0] = (int8_t) m_f3::value();
-    _wing.volz_temp[1] = (int8_t) m_f4::value();
+    _wing.volz_temp[0] = (int8_t) m_f1::value();
+    _wing.volz_temp[1] = (int8_t) m_f2::value();
+    _wing.volz_pos[0] = (uint16_t) m_f3::value();
+    _wing.volz_pos[1] = (uint16_t) m_f4::value();
     _wing.gyro_temp = (int8_t) m_sns_temp::value();
 
-    sendWingTelemetry();
+    //crc
+    _wing.crc = calcTelemetryCRC(&_wing.header, sizeof(WING_DATA) - 1);
+
+    send(PORT_ID_WING, &_wing.header, sizeof(WING_DATA), true);
+}
+
+EXPORT void on_heater()
+{
+    float RT = m_sns_temp::value();
+
+    if (RT < START_HEATER) {
+        m_sw::publish(1u);
+    }
+
+    if (RT > START_HEATER * 1.5f) {
+        m_sw::publish(0u);
+    }
 }
