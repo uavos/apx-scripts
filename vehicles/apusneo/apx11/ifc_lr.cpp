@@ -292,10 +292,10 @@ int main()
     task("pu_off"); //GCS with terminal command `vmexec("pu_off")`
 
 #if defined NODE_LEFT
-    //task("mcell_1"); //GCS with terminal command `vmexec("mcell_1")`
+    task("mcell_1"); //GCS with terminal command `vmexec("mcell_1")`
     task("mcell_2"); //GCS with terminal command `vmexec("mcell_2")`
 
-    //task("uvhpu_1"); //GCS with terminal command `vmexec("uvhpu_1")`
+    task("uvhpu_1"); //GCS with terminal command `vmexec("uvhpu_1")`
     task("uvhpu_2"); //GCS with terminal command `vmexec("uvhpu_2")`
 
     task("wing_l"); //GCS with terminal command `vmexec("wing")`
@@ -381,9 +381,9 @@ void packMsg1(const uint8_t &idx)
     auto *mcell = &_mcell[idx];
 
     //pack 1
-    msg.mcell.vbat = int16_t(mcell->vbat);
-    msg.mcell.tbat = int8_t(mcell->tbat * 100.f);
-    msg.mcell.tpcb = int8_t(mcell->tpcb * 100.f);
+    msg.mcell.vbat = int16_t(mcell->vbat * 100.f);
+    msg.mcell.tbat = int8_t(mcell->tbat);
+    msg.mcell.tpcb = int8_t(mcell->tpcb);
     msg.mcell.status = mcell->status;
     //pack 2
     msg.mcell.c1 = mcell->cell[0];
@@ -518,7 +518,7 @@ void processMCELLPackage(const uint32_t &can_id, const uint8_t *data, const uint
         mcell->vbat = (float) unpackInt16(data, 0) / 100.f;
         mcell->tbat = (float) unpackInt16(data, 2) / 100.f;
         mcell->tpcb = (float) unpackInt16(data, 4) / 100.f;
-        mcell->status = data[7];
+        mcell->status = data[6];
         break;
     }
     case MCELL_PACK2: {
