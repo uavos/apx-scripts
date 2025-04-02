@@ -17,7 +17,7 @@ constexpr const uint8_t MSG7_ID{6};
 
 constexpr const port_id_t PORT_ID_WING{43};
 
-constexpr const uint16_t TASK_TELEMETRY_MS{100}; //10Hz
+constexpr const uint16_t TASK_TELEMETRY_MS{200}; //5Hz
 constexpr const uint16_t TASK_HEATER_MS{2000};   //0.5Hz
 
 //----------------------Telemetry---------------------------
@@ -26,6 +26,7 @@ constexpr const uint16_t TASK_HEATER_MS{2000};   //0.5Hz
 struct WING_DATA
 {
     uint8_t header;
+    uint16_t volatage[2]; //nav, srv
     int8_t volz_temp[2];
     uint16_t volz_pos[2];
     int8_t gyro_temp;
@@ -47,10 +48,13 @@ using m_sw = Mandala<mandala::ctr::env::sw::sw5>; //heater off/on
 #endif
 
 //----------------------Mandala------------------------------
-using m_f1 = Mandala<mandala::est::env::usrf::f1>; //volz temp
-using m_f2 = Mandala<mandala::est::env::usrf::f2>; //volz temp
-using m_f3 = Mandala<mandala::est::env::usrf::f3>; //volz pos
-using m_f4 = Mandala<mandala::est::env::usrf::f4>; //volz pos
+using m_f1 = Mandala<mandala::est::env::usrf::f1>; //pwr nav
+using m_f2 = Mandala<mandala::est::env::usrf::f2>; //pwr srv
+
+using m_f10 = Mandala<mandala::est::env::usrf::f10>; //volz temp
+using m_f11 = Mandala<mandala::est::env::usrf::f11>; //volz temp
+using m_w10 = Mandala<mandala::est::env::usrw::w10>; //volz pos
+using m_w11 = Mandala<mandala::est::env::usrw::w11>; //volz pos
 
 using m_sns_temp = Mandala<mandala::sns::nav::gyro::temp>; //gyro temp
 
@@ -58,14 +62,17 @@ int main()
 {
     m_f1();
     m_f2();
-    m_f3();
-    m_f4();
+
+    m_f10();
+    m_f11();
+    m_w10();
+    m_w11();
 
     m_sns_temp();
 
     m_sw();
 
-    task("on_telemetry", TASK_TELEMETRY_MS); //10 Hz
+    task("on_telemetry", TASK_TELEMETRY_MS); //5 Hz
     task("on_heater", TASK_HEATER_MS);       //0.5 Hz
 
     printf("NAV-WING:%s Script ready...\n", txt_dev);
@@ -90,10 +97,12 @@ EXPORT void on_telemetry()
     _wing.header = MSG7_ID | ((NODE_ID << 4) & 0xF0);
 
     //data
-    _wing.volz_temp[0] = (int8_t) m_f1::value();
-    _wing.volz_temp[1] = (int8_t) m_f2::value();
-    _wing.volz_pos[0] = (uint16_t) m_f3::value();
-    _wing.volz_pos[1] = (uint16_t) m_f4::value();
+    _wing.volatage[0] = (uint16_t) (m_f1::value() * 100.f);
+    _wing.volatage[1] = (uint16_t) (m_f2::value() * 100.f);
+    _wing.volz_temp[0] = (int8_t) m_f10::value();
+    _wing.volz_temp[1] = (int8_t) m_f11::value();
+    _wing.volz_pos[0] = (uint16_t) m_w10::value();
+    _wing.volz_pos[1] = (uint16_t) m_w11::value();
     _wing.gyro_temp = (int8_t) m_sns_temp::value();
 
     //crc
