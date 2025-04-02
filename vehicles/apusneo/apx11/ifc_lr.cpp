@@ -135,8 +135,11 @@ constexpr const uint16_t SP_SHIFT{20};
 constexpr const uint16_t SP_PACK1{SP_ID + 1};
 constexpr const uint16_t SP_PACK2{SP_ID + 2};
 constexpr const uint16_t SP_POWER_ON{SP_ID + 6};
+constexpr const uint16_t SP_SAVE_K{SP_ID + 7};
 
 constexpr const uint16_t SP_CMD_POWER_ON{SP_ID + 10};
+constexpr const uint16_t SP_CMD_K{SP_ID + 11};
+
 #pragma pack(1)
 struct SP
 {
@@ -336,6 +339,8 @@ using m_sp_status = Mandala<mandala::est::env::usrc::c9>;
 using m_sp_cin = Mandala<mandala::est::env::usr::u2>;
 using m_sp_cout = Mandala<mandala::est::env::usr::u9>;
 
+using m_sp_cmd_k = Mandala<mandala::ctr::env::tune::t15>;
+
 //nav
 using m_navl_temp = Mandala<mandala::est::env::usr::u10>;
 using m_navr_temp = Mandala<mandala::est::env::usr::u11>;
@@ -368,6 +373,7 @@ int main()
     task("wing_l"); //GCS with terminal command `vmexec("wing_l")`
     task("wing_r"); //GCS with terminal command `vmexec("wing_r")`
     m_pu_cmd_hpwr("on_cmd_hpwr");
+    m_sp_cmd_k("on_cmd_k");
 
 #if defined NODE_LEFT
     //task("mc_1"); //GCS with terminal command `vmexec("mc_1")`
@@ -596,6 +602,15 @@ void sp_cmd_power_on(const uint8_t &value)
     sendCmdToCan(SP_CMD_POWER_ON + SP_SHIFT, msg, 1);
 }
 
+void sp_cmd_k(const float &value)
+{
+    uint8_t msg[4] = {};
+    memcpy(msg, &value, sizeof(float));
+
+    sendCmdToCan(SP_CMD_K, msg, 1);
+    sendCmdToCan(SP_CMD_K + SP_SHIFT, msg, 4);
+}
+
 void processPU(const uint32_t &can_id, const uint8_t *data, const uint8_t &idx)
 {
     auto *pu = &_pu[idx];
@@ -764,6 +779,12 @@ EXPORT void canAuxHandler(const uint8_t *data, size_t size)
         printf("SP pwr:%d\n", can_data[0]);
         break;
     }
+    case SP_SAVE_K:
+    case SP_SAVE_K + 1 * SP_SHIFT: {
+        float cmd{};
+        memcpy(&cmd, can_data, sizeof(float));
+        printf("SP-k:%.2f\n", cmd);
+    }
     }
 }
 
@@ -845,6 +866,16 @@ EXPORT void on_cmd_hpwr()
     uint8_t cmd = limit((uint8_t) m_pu_cmd_hpwr::value(), PU_MIN_HEATER, PU_MAX_HEATER);
     printf("cmd_hpwr:%u", cmd);
     pu_cmd_heater(1, cmd);
+}
+
+EXPORT void on_cmd_k()
+{
+    constexpr const float PU_MIN_CMD_K{0.7f};
+    constexpr const float PU_MAX_CMD_K{0.95f};
+
+    float cmd = limit((float) m_sp_cmd_k::value(), PU_MIN_CMD_K, PU_MAX_CMD_K);
+    printf("cmd_k:%.2f", cmd);
+    sp_cmd_k(cmd);
 }
 
 EXPORT void reset_error()
