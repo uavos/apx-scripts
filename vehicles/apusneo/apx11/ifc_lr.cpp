@@ -544,7 +544,7 @@ void saveDataToMandala()
 
     //sp
     m_sp_vin::publish(_sp[idx].msg1.vin);
-    m_sp_vin::publish(_sp[idx].msg1.vout);
+    m_sp_vout::publish(_sp[idx].msg1.vout);
     m_sp_temp::publish(_sp[idx].msg1.temp);
     m_sp_status::publish((uint32_t) _sp[idx].msg1.status);
     m_sp_cin::publish(_sp[idx].msg2.cin);
