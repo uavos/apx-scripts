@@ -48,13 +48,13 @@ using m_sw = Mandala<mandala::ctr::env::sw::sw5>; //heater off/on
 #endif
 
 //----------------------Mandala------------------------------
-using m_f1 = Mandala<mandala::est::env::usrf::f1>; //pwr nav
-using m_f2 = Mandala<mandala::est::env::usrf::f2>; //pwr srv
+using m_f1 = Mandala<mandala::est::env::usrf::f1>; //volz temp
+using m_f2 = Mandala<mandala::est::env::usrf::f2>; //volz temp
+using m_f3 = Mandala<mandala::est::env::usrf::f3>; //volz pos
+using m_f4 = Mandala<mandala::est::env::usrf::f4>; //volz pos
 
-using m_f10 = Mandala<mandala::est::env::usrf::f10>; //volz temp
-using m_f11 = Mandala<mandala::est::env::usrf::f11>; //volz temp
-using m_w10 = Mandala<mandala::est::env::usrw::w10>; //volz pos
-using m_w11 = Mandala<mandala::est::env::usrw::w11>; //volz pos
+using m_f11 = Mandala<mandala::est::env::usrf::f11>; //pwr nav
+using m_f12 = Mandala<mandala::est::env::usrf::f12>; //pwr srv
 
 using m_sns_temp = Mandala<mandala::sns::nav::gyro::temp>; //gyro temp
 
@@ -62,11 +62,11 @@ int main()
 {
     m_f1();
     m_f2();
+    m_f3();
+    m_f4();
 
-    m_f10();
     m_f11();
-    m_w10();
-    m_w11();
+    m_f12();
 
     m_sns_temp();
 
@@ -97,12 +97,12 @@ EXPORT void on_telemetry()
     _wing.header = MSG7_ID | ((NODE_ID << 4) & 0xF0);
 
     //data
-    _wing.volatage[0] = (uint16_t) (m_f1::value() * 100.f);
-    _wing.volatage[1] = (uint16_t) (m_f2::value() * 100.f);
-    _wing.volz_temp[0] = (int8_t) m_f10::value();
-    _wing.volz_temp[1] = (int8_t) m_f11::value();
-    _wing.volz_pos[0] = (uint16_t) m_w10::value();
-    _wing.volz_pos[1] = (uint16_t) m_w11::value();
+    _wing.volatage[0] = (uint16_t) (m_f11::value() * 100.f);
+    _wing.volatage[1] = (uint16_t) (m_f12::value() * 100.f);
+    _wing.volz_temp[0] = (int8_t) m_f1::value();
+    _wing.volz_temp[1] = (int8_t) m_f2::value();
+    _wing.volz_pos[0] = (uint16_t) m_f3::value();
+    _wing.volz_pos[1] = (uint16_t) m_f4::value();
     _wing.gyro_temp = (int8_t) m_sns_temp::value();
 
     //crc
