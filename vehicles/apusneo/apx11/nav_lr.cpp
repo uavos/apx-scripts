@@ -26,7 +26,7 @@ constexpr const uint16_t TASK_HEATER_MS{2000};   //0.5Hz
 struct WING_DATA
 {
     uint8_t header;
-    uint16_t volatage[2]; //nav, srv
+    uint16_t voltage[2]; //nav, srv
     int8_t volz_temp[2];
     uint16_t volz_pos[2];
     int8_t gyro_temp;
@@ -97,8 +97,8 @@ EXPORT void on_telemetry()
     _wing.header = MSG7_ID | ((NODE_ID << 4) & 0xF0);
 
     //data
-    _wing.volatage[0] = (uint16_t) (m_f11::value() * 100.f);
-    _wing.volatage[1] = (uint16_t) (m_f12::value() * 100.f);
+    _wing.voltage[0] = (uint16_t) (m_f11::value() * 100.f);
+    _wing.voltage[1] = (uint16_t) (m_f12::value() * 100.f);
     _wing.volz_temp[0] = (int8_t) m_f1::value();
     _wing.volz_temp[1] = (int8_t) m_f2::value();
     _wing.volz_pos[0] = (uint16_t) m_f3::value();

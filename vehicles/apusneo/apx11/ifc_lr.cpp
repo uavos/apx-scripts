@@ -4,32 +4,24 @@
 //#define NODE_RIGHT TRUE //ifc-r
 
 #if defined NODE_LEFT
-constexpr const char *txt_dev = "L"; //L
-constexpr const uint8_t NODE_ID{3};
-constexpr const uint8_t MSG1_ID{0};
-constexpr const uint8_t MSG2_ID{1};
-constexpr const uint8_t MSG3_ID{2};
+constexpr const char *txt_dev = "L";           //L
 constexpr const port_id_t PORT_ID_CAN_AUX{20}; //L=20 //CAN   1Mb
 #endif
 
 #if defined NODE_RIGHT
-constexpr const char *txt_dev = "R"; //R
-constexpr const uint8_t NODE_ID{4};
-constexpr const uint8_t MSG1_ID{3};
-constexpr const uint8_t MSG2_ID{4};
-constexpr const uint8_t MSG3_ID{5};
+constexpr const char *txt_dev = "R";           //R
 constexpr const port_id_t PORT_ID_CAN_AUX{70}; //R=70 //CAN   1Mb
 #endif
 
 constexpr const uint8_t NODE_WING_L_ID{1};
 constexpr const uint8_t NODE_WING_R_ID{2};
 
-constexpr const uint16_t TASK_DELAY_MS{50}; //20Hz
+constexpr const uint8_t TASK_MAIN_MS{50};          //20Hz
+constexpr const uint8_t TASK_SAVE_MANDALA_MS{100}; //100Hz
 
 //--------------------------ports--------------------------
-constexpr const port_id_t PORT_ID_GCU_W{40};
+constexpr const port_id_t PORT_ID_AGL{5};
 constexpr const port_id_t PORT_ID_GCU_R{41};
-constexpr const port_id_t PORT_ID_TLM_SYNC{42};
 constexpr const port_id_t PORT_ID_WING{43};
 //constexpr const port_id_t PORT_ID_MHX{44};
 //---------------------------------------------------------
@@ -103,7 +95,7 @@ struct PU
 };
 #pragma pack()
 
-PU _pu[2] = {};
+PU _pu[CNT_DEV] = {};
 
 //---------------------------------------------------------
 
@@ -126,7 +118,7 @@ struct MC
 };
 #pragma pack()
 
-MC _mc[2] = {};
+MC _mc[CNT_DEV] = {};
 //---------------------------------------------------------
 
 //--------------------------sp-----------------------------
@@ -159,26 +151,10 @@ struct SP
 };
 #pragma pack()
 
-SP _sp[2] = {};
+SP _sp[CNT_DEV] = {};
 bool sp_state{false};
 //---------------------------------------------------------
 
-//--------------------------vesc---------------------------
-constexpr const uint8_t VESC_ID{0x24}; //36
-//---------------------------------------------------------
-
-//----------------------Response---------------------------
-uint32_t t_puResponse[CNT_DEV] = {};
-uint32_t t_mcResponse[CNT_DEV] = {};
-uint32_t t_spResponse[CNT_DEV] = {};
-uint32_t t_escResponse{};
-
-constexpr const uint16_t DEVICE_TIMEOUT{3000};
-
-bool responseState[12] = {}; //pu1, mc1, sp1, pu2, mc2, sp2, vesc, volz[5]
-
-uint8_t size_error_gcu = 0;
-uint8_t size_error_sync = 0;
 uint8_t size_error_wing = 0;
 //----------------------------------------------------------
 
@@ -192,126 +168,34 @@ struct WING_DATA
     int8_t gyro_temp;
 };
 #pragma pack()
+#pragma pack()
 
 WING_DATA _wing_l = {};
 WING_DATA _wing_r = {};
 //----------------------------------------------------------
 
-//----------------------Telemetry---------------------------
-constexpr const uint8_t TELEMETRY_SEND_DELAY_MS{40};
-uint32_t t_telemetryMsg{0};
-int8_t telemetrySyncCurrentMsgId{-1};
+//----------------------Temperature-------------------------
+constexpr float VREF{3.f};
+constexpr float RPUP_PT1000{3160.f};
 
-bool needSendTelemetry{false};
+enum class TSType {
+    PT1000,
+    NTC3988,
+    NTC3570,
+};
 
-constexpr const uint8_t MSG1_SIZE = 1 + 49 + 1; //header + data + crc
-constexpr const uint8_t MSG2_SIZE = 1 + 49 + 1; //header + data + crc
-constexpr const uint8_t MSG3_SIZE = 1 + 18 + 1; //header + data + crc
+constexpr uint8_t SIZE_PT1000{23};
+constexpr float RES_PT1000[SIZE_PT1000] = {723.3453f,  763.2784f,  803.0628f,  842.7065f,  882.2166f,  921.5990f,
+                                           960.8588f,  1000.f,     1039.0252f, 1077.9350f, 1116.7292f, 1155.4080f,
+                                           1193.9713f, 1232.4190f, 1270.7513f, 1308.9680f, 1347.0693f, 1385.0550f,
+                                           1422.9253f, 1460.6800f, 1498.3193f, 1535.8430f, 1573.2513f};
 
-constexpr const uint8_t PACK_SIZE_MAX = 64; //max pack size
-uint8_t telemetrySize = 0;
-uint8_t telemetryPack[PACK_SIZE_MAX] = {};
-
-typedef struct
-{
-    //pack 2
-    int16_t vout; //mult=0.01
-    int16_t tbat; //mult=0.01
-    uint8_t status;
-    //pack 3
-    int32_t cbat;
-    int32_t ebat;
-    //pack 4
-    uint16_t res_bat;
-    uint16_t v_res; //mult=0.01
-    //pack 5
-    int16_t ibat_flt; //mult=0.01
-    //pack 7
-    int16_t h_pwr; //mult=0.01
-} __attribute__((packed)) t_uvhpu;
-
-typedef struct
-{
-    //pack 1
-    int16_t vbat; //mult=0.01
-    int8_t tbat;
-    int8_t tpcb;
-    uint8_t status;
-    //pack 2
-    uint16_t c1; //mult=0.001
-    uint16_t c2; //mult=0.001
-    uint16_t c3; //mult=0.001
-    uint16_t c4; //mult=0.001
-    //pack 3
-    uint16_t c5; //mult=0.001
-    uint16_t c6; //mult=0.001
-} __attribute__((packed)) t_mcell;
-
-typedef struct
-{
-    //pack 1
-    int16_t vin;  //mult=0.01
-    int16_t vout; //mult=0.01
-    int8_t temp;
-    uint8_t status;
-    //pack 2
-    int16_t cin;  //mult=0.01
-    int16_t cout; //mult=0.01
-} __attribute__((packed)) t_mppt;
-
-typedef struct
-{
-    int16_t crt; //mult=0.01
-    int8_t dc;
-    int8_t ft;
-    int8_t mt;
-    int16_t crtin; //mult=0.01
-} __attribute__((packed)) t_vesc;
-
-typedef struct
-{
-    int8_t pos;
-    int8_t temp;
-} __attribute__((packed)) t_volz;
-
-/*
- * Full packet structure:
- * | 1 byte            | N bytes   | 1 byte  |
- * | 0xF0    0x0F
- * | NodeId  MessageId | data      | crc8    |
- */
-typedef struct
-{
-    uint8_t uvhpu_online : 1;
-    uint8_t mcell_online : 1;
-    uint8_t mppt_online : 1;
-    uint8_t unused : 5;
-    t_uvhpu pu;
-    t_mcell mc;
-    t_mppt mppt;
-} __attribute__((packed)) t_ifc_lr_msg1;
-
-typedef struct
-{
-    uint8_t vesc_online : 1;
-    uint8_t volz_ail_online : 1;
-    uint8_t volz_elv_online : 1;
-    uint8_t volz_rud_online : 1;
-    uint8_t volz_pitch_online : 1;
-    uint8_t unused : 3;
-    t_vesc vesc;
-    t_volz volz_ail;
-    t_volz volz_sweep;
-    t_volz volz_elv;
-    t_volz volz_rud;
-    int8_t wind_temp;
-} __attribute__((packed)) t_ifc_lr_msg2;
-//---------------------------------------------------------
+constexpr float TEMP_PT1000[SIZE_PT1000] = {-70.f, -60.f, -50.f, -40.f, -30.f, -20.f, -10.f, 0.f,
+                                            10.f,  20.f,  30.f,  40.f,  50.f,  60.f,  70.f,  80.f,
+                                            90.f,  100.f, 110.f, 120.f, 130.f, 140.f, 150.f};
+//----------------------------------------------------------
 
 //----------------------saveToMandala----------------------
-constexpr const uint8_t SAVE_MANDALA_DELAY_MS{100};
-//---------------------------------------------------------
-
 //pu
 using m_pu_vbat = Mandala<mandala::est::env::usr::u3>;
 using m_pu_temp = Mandala<mandala::est::env::usrw::w3>;
@@ -321,8 +205,6 @@ using m_pu_cbat_flt = Mandala<mandala::est::env::usrf::f5>;
 using m_pu_vbat_flt = Mandala<mandala::est::env::usrf::f6>;
 using m_pu_h_pwr = Mandala<mandala::est::env::usrc::c10>;
 
-using m_pu_cmd_hpwr = Mandala<mandala::est::env::usrc::c11>;
-
 //mc
 using m_mc_vbat = Mandala<mandala::est::env::usrf::f7>;
 using m_mc_tbat = Mandala<mandala::est::env::usrw::w4>;
@@ -330,8 +212,6 @@ using m_mc_tpcb = Mandala<mandala::est::env::usrw::w5>;
 using m_mc_status = Mandala<mandala::est::env::usrc::c8>;
 
 //sp
-using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
-
 using m_sp_vin = Mandala<mandala::est::env::usrf::f8>;
 using m_sp_vout = Mandala<mandala::est::env::usrf::f9>;
 using m_sp_temp = Mandala<mandala::est::env::usr::u1>;
@@ -339,31 +219,25 @@ using m_sp_status = Mandala<mandala::est::env::usrc::c9>;
 using m_sp_cin = Mandala<mandala::est::env::usr::u2>;
 using m_sp_cout = Mandala<mandala::est::env::usr::u9>;
 
-using m_sp_cmd_k = Mandala<mandala::ctr::env::tune::t15>;
-
 //nav
 using m_navl_temp = Mandala<mandala::est::env::usr::u10>;
 using m_navr_temp = Mandala<mandala::est::env::usr::u11>;
 
+//adc
+using m_pt1000 = Mandala<mandala::est::env::usrf::f14>; //adc pt1000
+
+using m_agl = Mandala<mandala::sns::nav::agl::laser>; //agl
+
+//cmd
+using m_pu_cmd_hpwr = Mandala<mandala::est::env::usrc::c11>;    //pu
+using m_sp_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;      //sp
+using m_sp_cmd_k = Mandala<mandala::ctr::env::tune::t15>;       //sp
+using m_adc_pt1000_raw = Mandala<mandala::est::env::usrx::x14>; //adc pt1000
+
 int main()
 {
-    m_pwr_ign();
-
-    const auto now = time_ms();
-
-    t_puResponse[0] = now;
-    t_puResponse[1] = now;
-
-    t_mcResponse[0] = now;
-    t_mcResponse[1] = now;
-
-    t_spResponse[0] = now;
-    t_spResponse[1] = now;
-    t_escResponse = now;
-
-    t_telemetryMsg = now;
-
-    //task("reset_error"); //GCS with terminal command `vmexec("reset_error")`
+    m_sp_pwr_ign();
+    m_adc_pt1000_raw();
 
     //task("pu_on");  //GCS with terminal command `vmexec("pu_on")`
     //task("pu_off"); //GCS with terminal command `vmexec("pu_off")`
@@ -400,13 +274,13 @@ int main()
     task("wing_r"); //GCS with terminal command `vmexec("wing")`
 #endif
 
-    task("on_task", TASK_DELAY_MS);                 //20 Hz
-    task("on_save_mandala", SAVE_MANDALA_DELAY_MS); //10 Hz
+    task("on_main", TASK_MAIN_MS);                 //20 Hz
+    task("on_save_mandala", TASK_SAVE_MANDALA_MS); //10 Hz
 
     receive(PORT_ID_CAN_AUX, "canAuxHandler");
-    receive(PORT_ID_TLM_SYNC, "tlmSyncHandler");
     receive(PORT_ID_GCU_R, "gcuHandler");
     receive(PORT_ID_WING, "wingHandler");
+    receive(PORT_ID_AGL, "aglHandler");
 
     printf("IFC:%s Script ready...\n", txt_dev);
 
@@ -423,15 +297,70 @@ T limit(T value, T min, T max)
     return value;
 }
 
-void checkDeviceOnline(const uint32_t &t_LastResponse, const uint8_t &idx)
+template<typename T>
+const T interpolate(const T &value, const T &x_low, const T &x_high, const T &y_low, const T &y_high)
 {
-    uint32_t now = time_ms();
-
-    if (now - t_LastResponse > DEVICE_TIMEOUT) {
-        responseState[idx] = false;
-    } else {
-        responseState[idx] = true;
+    if (x_low == x_high) {
+        return y_low;
     }
+
+    if ((x_low < x_high && value <= x_low) || (x_low > x_high && value >= x_low)) {
+        return y_low;
+
+    } else if ((x_low < x_high && value >= x_high) || (x_low > x_high && value <= x_high)) {
+        return y_high;
+    }
+
+    T a = (y_high - y_low) / (x_high - x_low);
+    T b = y_low - (a * x_low);
+    return (a * value) + b;
+}
+
+template<typename T, size_t N>
+const T interpolateNXY(const T &value, const T (&x)[N], const T (&y)[N])
+{
+    size_t index = 0;
+
+    if (x[0] < x[N - 1]) {
+        // x increasing
+        while ((value > x[index + 1]) && (index < (N - 2))) {
+            index++;
+        }
+    } else {
+        // x decreasing
+        while ((value < x[index + 1]) && (index < (N - 2))) {
+            index++;
+        }
+    }
+
+    return interpolate(value, x[index], x[index + 1], y[index], y[index + 1]);
+}
+
+float getTemperature(const float &vin, const TSType &type, const float &vref, const float &rpup)
+{
+    if (vin < 0.f || vin > vref) {
+        return 0.f;
+    }
+
+    float res = (vin * rpup) / (vref - vin);
+
+    float temp = 0.f;
+
+    switch (type) {
+    case TSType::PT1000: {
+        temp = interpolateNXY(res, RES_PT1000, TEMP_PT1000);
+        break;
+    }
+    case TSType::NTC3988: {
+        temp = 0.f;
+        break;
+    }
+    case TSType::NTC3570: {
+        temp = 0.f;
+        break;
+    }
+    }
+    return temp;
 }
 
 uint8_t calcTelemetryCRC(const uint8_t *data, uint8_t size)
@@ -448,79 +377,6 @@ uint8_t calcTelemetryCRC(const uint8_t *data, uint8_t size)
 int16_t unpackInt16(const uint8_t *data, uint8_t index)
 {
     return (int16_t) (data[index] | (data[index + 1] << 8));
-}
-
-void packMsg1(const uint8_t &idx)
-{
-    t_ifc_lr_msg1 msg = {};
-
-    msg.uvhpu_online = responseState[idx * 3 + 0];
-    msg.mcell_online = responseState[idx * 3 + 1];
-    msg.mppt_online = responseState[idx * 3 + 2];
-
-    //pu
-    auto *pu = &_pu[idx];
-
-    //pack 2
-    msg.pu.vout = (int16_t) (pu->msg2.vout * 100.f);
-    msg.pu.tbat = (int16_t) (pu->msg2.tbat * 100.f);
-    msg.pu.status = (uint8_t) pu->msg2.status;
-    //pack 3
-    msg.pu.cbat = (int32_t) pu->msg3.cbat;
-    msg.pu.ebat = (int32_t) (pu->msg3.ebat * 100.f);
-    //pack 4
-    msg.pu.res_bat = (uint16_t) (pu->msg4.res_bar * 100.f);
-    msg.pu.v_res = (uint16_t) (pu->msg4.v_res * 100.f);
-    //pack 5
-    msg.pu.ibat_flt = (int16_t) (pu->msg5.ibat_flt * 100.f);
-    //pack 7
-    msg.pu.h_pwr = (int16_t) (pu->msg7.h_pwr * 100.f);
-
-    //mc
-    auto *mc = &_mc[idx];
-
-    //pack 1
-    msg.mc.vbat = int16_t(mc->vbat * 100.f);
-    msg.mc.tbat = int8_t(mc->tbat);
-    msg.mc.tpcb = int8_t(mc->tpcb);
-    msg.mc.status = mc->status;
-    //pack 2
-    msg.mc.c1 = mc->cell[0];
-    msg.mc.c2 = mc->cell[1];
-    msg.mc.c3 = mc->cell[2];
-    msg.mc.c4 = mc->cell[3];
-    //pack 3
-    msg.mc.c5 = mc->cell[4];
-    msg.mc.c6 = mc->cell[5];
-
-    memcpy(&telemetryPack[1], &msg, sizeof(t_ifc_lr_msg1));
-}
-
-void fillTelemetryPack()
-{
-    //HEADER
-    telemetryPack[0] = (telemetrySyncCurrentMsgId & 0x0F) | ((NODE_ID << 4) & 0xF0);
-
-    if (telemetrySyncCurrentMsgId == MSG1_ID) {
-        telemetrySize = MSG1_SIZE;
-        packMsg1(0);
-    } else if (telemetrySyncCurrentMsgId == MSG2_ID) {
-        telemetrySize = MSG2_SIZE;
-        packMsg1(1);
-    } else if (telemetrySyncCurrentMsgId == MSG3_ID) {
-        telemetrySize = MSG3_SIZE;
-    }
-
-    //crc
-    uint8_t crc = calcTelemetryCRC(telemetryPack, telemetrySize - 1);
-    telemetryPack[telemetrySize - 1] = crc;
-}
-
-void sendTelemetry()
-{
-    send(PORT_ID_GCU_W, telemetryPack, telemetrySize, true);
-    needSendTelemetry = false;
-    telemetrySyncCurrentMsgId = -1;
 }
 
 void saveDataToMandala()
@@ -709,13 +565,6 @@ EXPORT void canAuxHandler(const uint8_t *data, size_t size)
         can_data[i] = data[4 + i]; // 4 is data position
     }
 
-    const uint32_t now = time_ms();
-
-    //CAN ID 0xFF
-    if ((can_id & 0xFF) == VESC_ID) {
-        t_escResponse = now;
-    }
-
     //printf("can_id:%x", can_id);
 
     //CAN ID 0XFFFF
@@ -727,7 +576,6 @@ EXPORT void canAuxHandler(const uint8_t *data, size_t size)
     case PU_PACK5:
     case PU_PACK6:
     case PU_PACK7: {
-        t_puResponse[0] = now;
         processPU(can_id, can_data, 0);
         break;
     }
@@ -738,7 +586,6 @@ EXPORT void canAuxHandler(const uint8_t *data, size_t size)
     case PU_PACK5 + 1 * PU_SHIFT:
     case PU_PACK6 + 1 * PU_SHIFT:
     case PU_PACK7 + 1 * PU_SHIFT: {
-        t_puResponse[1] = now;
         can_id -= 1 * PU_SHIFT;
         processPU(can_id, can_data, 1);
         break;
@@ -746,36 +593,29 @@ EXPORT void canAuxHandler(const uint8_t *data, size_t size)
     case MC_PACK1:
     case MC_PACK2:
     case MC_PACK3: {
-        t_mcResponse[0] = now;
         processMC(can_id, can_data, 0);
         break;
     }
     case MC_PACK1 + 1 * MC_SHIFT:
     case MC_PACK2 + 1 * MC_SHIFT:
     case MC_PACK3 + 1 * MC_SHIFT: {
-        t_mcResponse[1] = now;
         can_id -= 1 * MC_SHIFT;
         processMC(can_id, can_data, 1);
         break;
     }
     case SP_PACK1:
     case SP_PACK2: {
-        t_spResponse[0] = now;
         processSP(can_id, can_data, 0);
         break;
     }
     case SP_PACK1 + 1 * SP_SHIFT:
     case SP_PACK2 + 1 * SP_SHIFT: {
-        t_spResponse[1] = now;
         can_id -= 1 * SP_SHIFT;
         processSP(can_id, can_data, 1);
         break;
     }
     case SP_POWER_ON:
     case SP_POWER_ON + 1 * SP_SHIFT: {
-        //uint32_t n_sp = (can_id - SP_POWER_ON) / SP_SHIFT + 1;
-        //printf("SP-%s", txt_dev);
-        //printf("%d ", n_sp);
         printf("SP pwr:%d\n", can_data[0]);
         break;
     }
@@ -785,24 +625,6 @@ EXPORT void canAuxHandler(const uint8_t *data, size_t size)
         memcpy(&cmd, can_data, sizeof(float));
         printf("SP-k:%.2f\n", cmd);
     }
-    }
-}
-
-EXPORT void tlmSyncHandler(const uint8_t *data, size_t size)
-{
-    if (size != 2 && size_error_sync++ < 3) {
-        printf("IFC-%s, wrong telemetry sync packet...\n", txt_dev);
-        return;
-    }
-
-    if (data[0] == NODE_ID) {
-        uint8_t msg_id = data[1];
-        if (msg_id == MSG1_ID || msg_id == MSG2_ID || msg_id == MSG3_ID) {
-            telemetrySyncCurrentMsgId = (int8_t) msg_id;
-            needSendTelemetry = true;
-            t_telemetryMsg = time_ms();
-            fillTelemetryPack();
-        }
     }
 }
 
@@ -829,33 +651,63 @@ EXPORT void wingHandler(const uint8_t *data, size_t size)
     }
 }
 
-EXPORT void on_task()
+//ASCII:ld,0:-0.66
+//HEX:6c 64 2c 30 3a 2d 30 2e 36 36 20 0d 0a
+EXPORT void aglHandler(const uint8_t *data, size_t size)
 {
-    checkDeviceOnline(t_puResponse[0], 0);
-    checkDeviceOnline(t_mcResponse[0], 1);
-    checkDeviceOnline(t_spResponse[0], 2);
+    for (uint32_t i = 0; i < size; i++) {
+        if (data[i] == ':') {
+            int sign = 1;
+            float result = 0.0f;
+            float divisor = 10.0f;
+            bool decimal = false;
+            i++;
+            if (data[i] == '-') {
+                sign = -1;
+                i++;
+            }
+            for (; i < size; i++) {
+                if (data[i] >= '0' && data[i] <= '9') {
+                    if (decimal) {
+                        result += (data[i] - '0') / divisor;
+                        divisor *= 10.0f;
+                    } else {
+                        result = result * 10.0f + (data[i] - '0');
+                    }
+                } else if (data[i] == '.') {
+                    decimal = true;
+                } else {
+                    break;
+                }
+            }
+            float agl = (float) sign * result;
 
-    checkDeviceOnline(t_puResponse[1], 3);
-    checkDeviceOnline(t_mcResponse[1], 4);
-    checkDeviceOnline(t_spResponse[1], 5);
+            //printf("agl:%.2f", agl);
+            m_agl::publish(agl);
+        }
+    }
+}
 
-    checkDeviceOnline(t_escResponse, 6);
-
-    bool pwr_ign = (bool) m_pwr_ign::value();
+EXPORT void on_main()
+{
+    bool pwr_ign = (bool) m_sp_pwr_ign::value();
     if (sp_state != pwr_ign) {
         sp_cmd_power_on(pwr_ign);
         sp_state = pwr_ign;
-    }
-
-    uint32_t now = time_ms();
-
-    if (now - t_telemetryMsg > TELEMETRY_SEND_DELAY_MS && needSendTelemetry) {
-        sendTelemetry();
     }
 }
 
 EXPORT void on_save_mandala()
 {
+    //temp
+    float raw_adc = m_adc_pt1000_raw::value() * 1000.f;
+    float val = getTemperature(raw_adc, TSType::PT1000, VREF, RPUP_PT1000);
+    m_pt1000::publish(val);
+
+    //agl
+    send(PORT_ID_AGL, (const uint8_t *) "?LD\r\n", 5, true);
+
+    //save data
     saveDataToMandala();
 }
 
@@ -876,17 +728,6 @@ EXPORT void on_cmd_k()
     float cmd = limit((float) m_sp_cmd_k::value(), PU_MIN_CMD_K, PU_MAX_CMD_K);
     printf("cmd_k:%.2f", cmd);
     sp_cmd_k(cmd);
-}
-
-EXPORT void reset_error()
-{
-    //printf("IFC-%s: sync_size(%u)\n", txt_dev, size_error_sync);
-    //printf("IFC-%s: gcu_size(%u)\n", txt_dev, size_error_gcu);
-    //printf("IFC-%s: wing_size(%u)\n", txt_dev, size_error_wing);
-
-    size_error_sync = 0;
-    size_error_gcu = 0;
-    size_error_wing = 0;
 }
 
 void print_mc(const uint8_t &idx)
@@ -1008,8 +849,8 @@ EXPORT void wing_l()
     printf("volt2: %.2f", _wing_l.voltage[1] / 100.f);
     printf("temp1: %d", _wing_l.volz_temp[0]);
     printf("temp2: %d", _wing_l.volz_temp[1]);
-    printf("pos1: %u", _wing_l.volz_pos[0]);
-    printf("pos2: %u", _wing_l.volz_pos[1]);
+    printf("pos1: %d", _wing_l.volz_pos[0]);
+    printf("pos2: %d", _wing_l.volz_pos[1]);
     printf("temp: %d", _wing_l.gyro_temp);
 }
 
@@ -1020,8 +861,8 @@ EXPORT void wing_r()
     printf("volt2: %.2f", _wing_r.voltage[1] / 100.f);
     printf("temp1: %d", _wing_r.volz_temp[0]);
     printf("temp2: %d", _wing_r.volz_temp[1]);
-    printf("pos1: %u", _wing_r.volz_pos[0]);
-    printf("pos2: %u", _wing_r.volz_pos[1]);
+    printf("pos1: %d", _wing_r.volz_pos[0]);
+    printf("pos2: %d", _wing_r.volz_pos[1]);
     printf("temp: %d", _wing_r.gyro_temp);
 }
 
