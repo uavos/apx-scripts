@@ -164,7 +164,7 @@ struct WING_DATA
 {
     uint16_t voltage[2];
     int8_t volz_temp[2];
-    uint16_t volz_pos[2];
+    int16_t volz_pos[2];
     int8_t gyro_temp;
 };
 #pragma pack()
@@ -226,8 +226,6 @@ using m_navr_temp = Mandala<mandala::est::env::usr::u11>;
 //adc
 using m_pt1000 = Mandala<mandala::est::env::usrf::f14>; //adc pt1000
 
-using m_agl = Mandala<mandala::sns::nav::agl::laser>; //agl
-
 //cmd
 using m_pu_cmd_hpwr = Mandala<mandala::est::env::usrc::c11>;    //pu
 using m_sp_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;      //sp
@@ -244,34 +242,34 @@ int main()
     //task("sp_on");  //GCS with terminal command `vmexec("sp_on")`
     //task("sp_off"); //GCS with terminal command `vmexec("sp_off")`
 
-    task("wing_l"); //GCS with terminal command `vmexec("wing_l")`
-    task("wing_r"); //GCS with terminal command `vmexec("wing_r")`
     m_pu_cmd_hpwr("on_cmd_hpwr");
     m_sp_cmd_k("on_cmd_k");
 
 #if defined NODE_LEFT
-    //task("mc_1"); //GCS with terminal command `vmexec("mc_1")`
+    task("wing_l"); //GCS with terminal command `vmexec("wing_l")`
+
+    task("mc_1"); //GCS with terminal command `vmexec("mc_1")`
     task("mc_2"); //GCS with terminal command `vmexec("mc_2")`
 
-    //task("pu_1"); //GCS with terminal command `vmexec("pu_1")`
+    task("pu_1"); //GCS with terminal command `vmexec("pu_1")`
     task("pu_2"); //GCS with terminal command `vmexec("pu_2")`
 
     //task("sp_1"); //GCS with terminal command `vmexec("sp_1")`
-    task("sp_2"); //GCS with terminal command `vmexec("sp_2")`
+    //task("sp_2"); //GCS with terminal command `vmexec("sp_2")`
 
 #endif
 
 #if defined NODE_RIGHT
+    task("wing_r"); //GCS with terminal command `vmexec("wing_r")`
+
     task("mc_3"); //GCS with terminal command `vmexec("mc_3")`
     task("mc_4"); //GCS with terminal command `vmexec("mc_4")`
 
     task("pu_3"); //GCS with terminal command `vmexec("pu_3")`
     task("pu_4"); //GCS with terminal command `vmexec("pu_4")`
 
-    task("sp_3"); //GCS with terminal command `vmexec("sp_3")`
-    task("sp_4"); //GCS with terminal command `vmexec("sp_4")`
-
-    task("wing_r"); //GCS with terminal command `vmexec("wing")`
+    //task("sp_3"); //GCS with terminal command `vmexec("sp_3")`
+    //task("sp_4"); //GCS with terminal command `vmexec("sp_4")`
 #endif
 
     task("on_main", TASK_MAIN_MS);                 //20 Hz
@@ -379,37 +377,7 @@ int16_t unpackInt16(const uint8_t *data, uint8_t index)
     return (int16_t) (data[index] | (data[index + 1] << 8));
 }
 
-void saveDataToMandala()
-{
-    uint8_t idx = 1;
-
-    //pu
-    m_pu_vbat::publish(_pu[idx].msg1.vbat);
-    m_pu_temp::publish(_pu[idx].msg2.tbat);
-    m_pu_pwr::publish(_pu[idx].msg2.pbat);
-    m_pu_status::publish((uint32_t) _pu[idx].msg2.status);
-    m_pu_cbat_flt::publish(_pu[idx].msg5.ibat_flt);
-    m_pu_vbat_flt::publish(_pu[idx].msg5.vbat_flt);
-    m_pu_h_pwr::publish(_pu[idx].msg7.h_pwr);
-
-    //mc
-    m_mc_vbat::publish(_mc[idx].vbat);
-    m_mc_tbat::publish(_mc[idx].tbat);
-    m_mc_tpcb::publish(_mc[idx].tpcb);
-    m_mc_status::publish((uint32_t) _mc[idx].status);
-
-    //sp
-    m_sp_vin::publish(_sp[idx].msg1.vin);
-    m_sp_vout::publish(_sp[idx].msg1.vout);
-    m_sp_temp::publish(_sp[idx].msg1.temp);
-    m_sp_status::publish((uint32_t) _sp[idx].msg1.status);
-    m_sp_cin::publish(_sp[idx].msg2.cin);
-    m_sp_cout::publish(_sp[idx].msg2.cout);
-
-    //nav
-    m_navl_temp::publish((float) _wing_l.gyro_temp);
-    m_navr_temp::publish((float) _wing_r.gyro_temp);
-}
+void saveDataToMandala() {}
 
 EXPORT void sendCmdToCan(const uint32_t &can_id, const uint8_t *data, const uint8_t &size)
 {
@@ -651,43 +619,6 @@ EXPORT void wingHandler(const uint8_t *data, size_t size)
     }
 }
 
-//ASCII:ld,0:-0.66
-//HEX:6c 64 2c 30 3a 2d 30 2e 36 36 20 0d 0a
-EXPORT void aglHandler(const uint8_t *data, size_t size)
-{
-    for (uint32_t i = 0; i < size; i++) {
-        if (data[i] == ':') {
-            int sign = 1;
-            float result = 0.0f;
-            float divisor = 10.0f;
-            bool decimal = false;
-            i++;
-            if (data[i] == '-') {
-                sign = -1;
-                i++;
-            }
-            for (; i < size; i++) {
-                if (data[i] >= '0' && data[i] <= '9') {
-                    if (decimal) {
-                        result += (data[i] - '0') / divisor;
-                        divisor *= 10.0f;
-                    } else {
-                        result = result * 10.0f + (data[i] - '0');
-                    }
-                } else if (data[i] == '.') {
-                    decimal = true;
-                } else {
-                    break;
-                }
-            }
-            float agl = (float) sign * result;
-
-            //printf("agl:%.2f", agl);
-            m_agl::publish(agl);
-        }
-    }
-}
-
 EXPORT void on_main()
 {
     bool pwr_ign = (bool) m_sp_pwr_ign::value();
@@ -703,9 +634,6 @@ EXPORT void on_save_mandala()
     float raw_adc = m_adc_pt1000_raw::value() * 1000.f;
     float val = getTemperature(raw_adc, TSType::PT1000, VREF, RPUP_PT1000);
     m_pt1000::publish(val);
-
-    //agl
-    send(PORT_ID_AGL, (const uint8_t *) "?LD\r\n", 5, true);
 
     //save data
     saveDataToMandala();
