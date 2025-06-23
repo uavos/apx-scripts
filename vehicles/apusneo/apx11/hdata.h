@@ -40,6 +40,7 @@ enum NodeID {
     nIfcR = 4,
     nComL = 5,
     nComR = 6,
+    nPYLD = 7,
     nGcu = 14,
     Broadcast = 15,
 };
@@ -50,6 +51,7 @@ enum TypeID {
     msg_3 = 2,    //esc, srv
     msg_4 = 3,    //wing
     msg_5 = 4,    //esc, srv-l srv-r
+    msg_6 = 5,    //pyld
     msg_cmd = 14, //from gcu_cmd
 };
 
@@ -205,7 +207,15 @@ typedef struct
     int8_t wing_temp;
     uint16_t nav_voltage; //mult=0.01
     uint16_t srv_voltage; //mult=0.01
-} __attribute__((packed)) t_msg2;
+} __attribute__((packed)) t_msg3;
+//------------------------------------------------------------------------
+typedef struct
+{
+    uint16_t voltage[2]; //sys, srv
+    int8_t volz_temp[2];
+    int16_t volz_pos[2];
+    int8_t gyro_temp;
+} __attribute__((packed)) t_msg4;
 //------------------------------------------------------------------------
 typedef struct
 {
@@ -225,7 +235,18 @@ typedef struct
     int8_t wing_temp[2];
     uint16_t nav_voltage[2]; //mult=0.01
     uint16_t srv_voltage[2]; //mult=0.01
-} __attribute__((packed)) t_msg3;
+} __attribute__((packed)) t_msg5;
+//------------------------------------------------------------------------
+typedef struct
+{
+    int8_t temp_room;
+    int8_t temp_cam[2];
+    int8_t temp_lens;
+    int8_t temp_comp[2];
+    int8_t temp_swmf1;
+    t_srv srv_antenna;
+    t_srv srv_valv;
+} __attribute__((packed)) t_msg6;
 //------------------------------------------------------------------------
 constexpr uint8_t h_crc(const uint8_t *data, const uint8_t &size)
 {
@@ -256,6 +277,9 @@ constexpr const t_header NAVL_IFCL_M4{MAGIC, NodeID::nNavL, NodeID::nIfcL, TypeI
 //NAV-R to IFC-R
 constexpr const t_header NAVR_IFCR_M4{MAGIC, NodeID::nNavR, NodeID::nIfcR, TypeID::msg_4}; //MSG4
 
+//PYLD to GCU
+constexpr const t_header NPYLD_GCU_M6{MAGIC, NodeID::nPYLD, NodeID::nGcu, TypeID::msg_6}; // MSG6
+
 //GCU-CMD
 constexpr const t_header NGCU_CMD_BROADCAST{MAGIC, NodeID::nGcu, NodeID::Broadcast, TypeID::msg_cmd}; //CMD_BROADCAST
 //------------------------------------------------------------------------
@@ -270,12 +294,12 @@ constexpr const uint8_t PACKET_SIZE_ESC = sizeof(t_esc); //7
 constexpr const uint8_t PACKET_SIZE_SRV = sizeof(t_srv); //2
 
 constexpr const uint8_t PACKET_SIZE_MSG1 = sizeof(t_msg1); //49
-constexpr const uint8_t PACKET_SIZE_MSG2 = sizeof(t_msg2); //23
-constexpr const uint8_t PACKET_SIZE_MSG3 = sizeof(t_msg3); //38
+constexpr const uint8_t PACKET_SIZE_MSG3 = sizeof(t_msg3); //23
+constexpr const uint8_t PACKET_SIZE_MSG5 = sizeof(t_msg5); //38
 
 constexpr const uint8_t PACKET_SIZE_MSG1_FULL = HEADER_SIZE + PACKET_SIZE_MSG1 + CRC_SIZE; //54
-constexpr const uint8_t PACKET_SIZE_MSG2_FULL = HEADER_SIZE + PACKET_SIZE_MSG2 + CRC_SIZE; //28
-constexpr const uint8_t PACKET_SIZE_MSG3_FULL = HEADER_SIZE + PACKET_SIZE_MSG3 + CRC_SIZE; //43
+constexpr const uint8_t PACKET_SIZE_MSG3_FULL = HEADER_SIZE + PACKET_SIZE_MSG3 + CRC_SIZE; //28
+constexpr const uint8_t PACKET_SIZE_MSG5_FULL = HEADER_SIZE + PACKET_SIZE_MSG5 + CRC_SIZE; //43
 
 static_assert(PACKET_SIZE_PU == 21, "Check PU struct...");
 static_assert(PACKET_SIZE_MC == 17, "Check MC struct...");
@@ -284,8 +308,8 @@ static_assert(PACKET_SIZE_ESC == 7, "Check ESC struct...");
 static_assert(PACKET_SIZE_SRV == 2, "Check SRV struct...");
 
 static_assert(PACKET_SIZE_MSG1 == 49, "Check MSG1 struct...");
-static_assert(PACKET_SIZE_MSG2 == 23, "Check MSG2 struct...");
-static_assert(PACKET_SIZE_MSG3 == 38, "Check MSG2 struct...");
+static_assert(PACKET_SIZE_MSG3 == 23, "Check MSG3 struct...");
+static_assert(PACKET_SIZE_MSG5 == 38, "Check MSG5 struct...");
 //------------------------------------------------------------------------
 
 } // namespace haps
