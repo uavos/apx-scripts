@@ -31,6 +31,31 @@ int main()
     return 0;
 }
 
+template<typename T>
+T limit(T value, T min, T max)
+{
+    if (value < min)
+        return min;
+    if (value > max)
+        return max;
+    return value;
+}
+
+float wrap(float x, float low, float high)
+{
+    float range = high - low;
+    if (range <= 0.0f)
+        return low;
+
+    while (x < low)
+        x += range;
+
+    while (x >= high)
+        x -= range;
+
+    return x;
+}
+
 EXPORT void on_task_agl()
 {
     //agl
@@ -144,6 +169,8 @@ EXPORT void airHandler(const uint8_t *data, size_t size)
     //printf("temp:%.2f", air_temp);
 
     m_spd::publish(air_spd);
-    m_hdg::publish(air_hdg);
     m_tmp::publish(air_temp);
+
+    air_hdg = wrap(limit(air_hdg, 0.f, 360.f), -180.f, 180.f);
+    m_hdg::publish(air_hdg);
 }
