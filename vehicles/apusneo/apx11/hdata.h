@@ -56,15 +56,47 @@ enum TypeID {
 };
 
 enum CmdGcu {
-    pu1_h = 10,
-    pu2_h,
-    pu3_h,
-    pu4_h,
+    //PU commands
+    pu1_pwr = 10,
+    pu2_pwr,
+    pu3_pwr,
+    pu4_pwr,
 
+    pu1_hold,
+    pu2_hold,
+    pu3_hold,
+    pu4_hold,
+
+    pu1_htr,
+    pu2_htr,
+    pu3_htr,
+    pu4_htr,
+
+    //SP commands
     sp1_pwr,
     sp2_pwr,
     sp3_pwr,
     sp4_pwr,
+
+    sp1_hold,
+    sp2_hold,
+    sp3_hold,
+    sp4_hold,
+
+    sp1_move,
+    sp2_move,
+    sp3_move,
+    sp4_move,
+
+    sp1_heat,
+    sp2_heat,
+    sp3_heat,
+    sp4_heat,
+
+    sp1_step,
+    sp2_step,
+    sp3_step,
+    sp4_step,
 };
 
 struct t_header
@@ -161,6 +193,9 @@ typedef struct
     //pack 2
     int16_t cin;  //mult=0.01
     int16_t cout; //mult=0.01
+    //pack 3
+    int16_t cmd_vin; //mult=0.01
+    int16_t dc;      //mult=0.01
 } __attribute__((packed)) t_sp;
 //------------------------------------------------------------------------
 typedef struct
@@ -289,25 +324,25 @@ constexpr const uint8_t MIN_CMD_SIZE = 6;               //6
 
 constexpr const uint8_t PACKET_SIZE_PU = sizeof(t_pu);   //21
 constexpr const uint8_t PACKET_SIZE_MC = sizeof(t_mc);   //17
-constexpr const uint8_t PACKET_SIZE_SP = sizeof(t_sp);   //10
+constexpr const uint8_t PACKET_SIZE_SP = sizeof(t_sp);   //14
 constexpr const uint8_t PACKET_SIZE_ESC = sizeof(t_esc); //7
 constexpr const uint8_t PACKET_SIZE_SRV = sizeof(t_srv); //2
 
-constexpr const uint8_t PACKET_SIZE_MSG1 = sizeof(t_msg1); //49
+constexpr const uint8_t PACKET_SIZE_MSG1 = sizeof(t_msg1); //53
 constexpr const uint8_t PACKET_SIZE_MSG3 = sizeof(t_msg3); //23
 constexpr const uint8_t PACKET_SIZE_MSG5 = sizeof(t_msg5); //38
 
-constexpr const uint8_t PACKET_SIZE_MSG1_FULL = HEADER_SIZE + PACKET_SIZE_MSG1 + CRC_SIZE; //54
+constexpr const uint8_t PACKET_SIZE_MSG1_FULL = HEADER_SIZE + PACKET_SIZE_MSG1 + CRC_SIZE; //58
 constexpr const uint8_t PACKET_SIZE_MSG3_FULL = HEADER_SIZE + PACKET_SIZE_MSG3 + CRC_SIZE; //28
 constexpr const uint8_t PACKET_SIZE_MSG5_FULL = HEADER_SIZE + PACKET_SIZE_MSG5 + CRC_SIZE; //43
 
 static_assert(PACKET_SIZE_PU == 21, "Check PU struct...");
 static_assert(PACKET_SIZE_MC == 17, "Check MC struct...");
-static_assert(PACKET_SIZE_SP == 10, "Check SP struct...");
+static_assert(PACKET_SIZE_SP == 14, "Check SP struct...");
 static_assert(PACKET_SIZE_ESC == 7, "Check ESC struct...");
 static_assert(PACKET_SIZE_SRV == 2, "Check SRV struct...");
 
-static_assert(PACKET_SIZE_MSG1 == 49, "Check MSG1 struct...");
+static_assert(PACKET_SIZE_MSG1 == 53, "Check MSG1 struct...");
 static_assert(PACKET_SIZE_MSG3 == 23, "Check MSG3 struct...");
 static_assert(PACKET_SIZE_MSG5 == 38, "Check MSG5 struct...");
 //------------------------------------------------------------------------
