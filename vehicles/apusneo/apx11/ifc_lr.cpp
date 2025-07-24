@@ -4,16 +4,20 @@
 //#define NODE_RIGHT TRUE //ifc-r
 
 #if defined NODE_LEFT
-constexpr const char *txt_dev = "L";                     //L
-constexpr const port_id_t PORT_ID_CAN_AUX{20};           //L=20 //CAN   1Mb
+constexpr const char *txt_dev = "L";           //L
+constexpr const port_id_t PORT_ID_CAN_AUX{20}; //L=20 //CAN   1Mb
+using m_pump_rpm_raw = Mandala<mandala::sns::env::scr::s8>;
 using m_pump_rpm = Mandala<mandala::est::env::usrw::w1>; //pump rpm left
 #endif
 
 #if defined NODE_RIGHT
-constexpr const char *txt_dev = "R";                     //R
-constexpr const port_id_t PORT_ID_CAN_AUX{70};           //R=70 //CAN   1Mb
+constexpr const char *txt_dev = "R";           //R
+constexpr const port_id_t PORT_ID_CAN_AUX{70}; //R=70 //CAN   1Mb
+using m_pump_rpm_raw = Mandala<mandala::sns::env::scr::s9>;
 using m_pump_rpm = Mandala<mandala::est::env::usrw::w2>; //pump rpm right
 #endif
+
+using m_pwr_eng = Mandala<mandala::ctr::env::pwr::eng>;
 
 constexpr const uint8_t TASK_MAIN_MS{50}; //20Hz
 
@@ -27,34 +31,53 @@ constexpr const uint16_t PU_CMD_RB{PU_ID + 13};
 //--------------------------sp-----------------------------
 constexpr const uint16_t SP_ID{512};
 constexpr const uint16_t SP_SHIFT{20};
-constexpr const uint16_t SP_CMD_POWER_ON{SP_ID + 10};
+constexpr const uint16_t SP_CMD_POWER{SP_ID + 10};
+constexpr const uint16_t SP_CMD_HOLD{SP_ID + 13};
+constexpr const uint16_t SP_CMD_MOVE{SP_ID + 14};
+constexpr const uint16_t SP_CMD_HEAT{SP_ID + 15};
+constexpr const uint16_t SP_CMD_STEP{SP_ID + 16};
 
 //--------------------------pump---------------------------
-using m_pump_rpm_raw = Mandala<mandala::sns::env::scr::s5>; //pump rpm left/right
 uint32_t timer_changed_rpm{};
 constexpr const uint16_t PUMP_RPM_TIMEOUT{2000};
 
+//task("pu");    //GCS with terminal command `vmexec("pu", 0)` or `vmexec("pu", 1)`
+//EXPORT void pu(int32_t val){}
+
+/*
+sp_x - command for SP
+10 - off;
+11 - on;
+12 - hold v_in;
+13 - hold dflt_Vmpp;
+14 - down;
+15 - up;
+16 - heat on;
+17 - heat off;
+*/
+
 int main()
 {
-    m_pump_rpm_raw("on_pump_rpm"); // subscribe `on changed` event
+    m_pump_rpm_raw("on_pump_rpm_raw"); // subscribe `on changed` event
+    m_pwr_eng("on_pwr_eng");           // subscribe `on changed` event
 
-    task("pu");    //GCS with terminal command `vmexec("pu", 0)` or `vmexec("pu", 1)`
-    task("pu_rb"); //GCS with terminal command `vmexec("pu_rb", 0)` or `vmexec("pu_rb", 100)`
+    task("pu_hold"); // 0/1
+    task("pu_rb");   // 0..100
 
 #if defined NODE_LEFT
-    task("sp_1"); //GCS with terminal command `vmexec("sp_1",0)`  or  `vmexec("sp_1",1)`
-    task("sp_2"); //GCS with terminal command `vmexec("sp_2",0)`  or  `vmexec("sp_2",1)`
+    task("sp_1");
+    task("sp_2");
 
-    task("pu_h1"); //GCS with terminal command `vmexec("pu_h1",0)`  or  `vmexec("pu_h1",30)`
-    task("pu_h2"); //GCS with terminal command `vmexec("pu_h2",0)`  or  `vmexec("pu_h2",30)`
+    task("pu_h1"); // 0..30
+    task("pu_h2"); // 0..30
 #endif
 
 #if defined NODE_RIGHT
-    task("sp_3"); //GCS with terminal command `vmexec("sp_3",0)`  or  `vmexec("sp_3",1)`
-    task("sp_4"); //GCS with terminal command `vmexec("sp_4",0)`  or  `vmexec("sp_4",1)`
+    task("sp_3");
+    task("sp_4");
 
-    task("pu_h3"); //GCS with terminal command `vmexec("pu_h3",0)`  or  `vmexec("pu_h3",30)`
-    task("pu_h4"); //GCS with terminal command `vmexec("pu_h4",0)`  or  `vmexec("pu_h4",30)`
+    task("pu_h3"); // 0..30
+    task("pu_h4"); // 0..30
 #endif
 
     task("on_main", TASK_MAIN_MS); //20 Hz
@@ -71,7 +94,7 @@ EXPORT void on_main()
     }
 }
 
-EXPORT void on_pump_rpm()
+EXPORT void on_pump_rpm_raw()
 {
     timer_changed_rpm = time_ms();
     m_pump_rpm::publish(m_pump_rpm_raw::value());
@@ -139,10 +162,43 @@ void pu_cmd_heater(const uint8_t &dev_id, const uint8_t &value)
 void sp_power(const uint8_t &dev_id, const uint8_t &value)
 {
     uint8_t msg[1] = {value};
-    sendCmdToCan(SP_CMD_POWER_ON + dev_id * SP_SHIFT, msg, 1);
+    sendCmdToCan(SP_CMD_POWER + dev_id * SP_SHIFT, msg, 1);
 }
 
-EXPORT void pu(int32_t val)
+void sp_hold(const uint8_t &dev_id, const uint8_t &value)
+{
+    uint8_t msg[1] = {value};
+    sendCmdToCan(SP_CMD_HOLD + dev_id * SP_SHIFT, msg, 1);
+}
+
+void sp_move(const uint8_t &dev_id, const uint8_t &value)
+{
+    uint8_t msg[1] = {value};
+    sendCmdToCan(SP_CMD_MOVE + dev_id * SP_SHIFT, msg, 1);
+}
+
+void sp_step(const uint8_t &dev_id, const uint8_t &value)
+{
+    //variable step from -128 to 127 (-1.28V to 1.27V) divided by 100
+    uint8_t msg[1] = {value};
+    sendCmdToCan(SP_CMD_STEP + dev_id * SP_SHIFT, msg, 1);
+}
+
+void sp_heat(const uint8_t &dev_id, const uint8_t &value)
+{
+    uint8_t msg[1] = {value};
+    sendCmdToCan(SP_CMD_HEAT + dev_id * SP_SHIFT, msg, 1);
+}
+
+EXPORT void on_pwr_eng()
+{
+    if (!(bool) m_pwr_eng::value()) {
+        sp_power(0, 0);
+        sp_power(1, 0);
+    }
+}
+
+EXPORT void pu_hold(int32_t val)
 {
     printf("IFC-%s, pu...\n", txt_dev);
     pu_cmd_power_on((uint8_t) val);
@@ -155,17 +211,40 @@ EXPORT void pu_rb(int32_t val)
     pu_cmd_rb((uint8_t) val);
 }
 
+EXPORT void sp(const uint8_t sp_id, int32_t val)
+{
+    if (val == 10) {
+        sp_power(sp_id, 0); //power off
+    } else if (val == 11) {
+        sp_power(sp_id, 1); //power on
+    } else if (val == 12) {
+        sp_hold(sp_id, 0); //hold V_in
+    } else if (val == 13) {
+        sp_hold(sp_id, 1); //hold Vmpp
+    } else if (val == 14) {
+        sp_move(sp_id, 0); //move down
+    } else if (val == 15) {
+        sp_move(sp_id, 1); //move up
+    } else if (val == 16) {
+        sp_heat(sp_id, 1); //heat on
+    } else if (val == 17) {
+        sp_heat(sp_id, 0); //heat off
+    }
+}
+
 #if defined NODE_LEFT
 EXPORT void sp_1(int32_t val)
 {
     printf("IFC-%s, sp_1...\n", txt_dev);
-    sp_power(0, (uint8_t) val);
+    printf("CMD-%u\n", val);
+    sp(0, val);
 }
 
 EXPORT void sp_2(int32_t val)
 {
     printf("IFC-%s, sp_2...\n", txt_dev);
-    sp_power(1, (uint8_t) val);
+    printf("CMD-%u\n", val);
+    sp(1, val);
 }
 
 EXPORT void pu_h1(int32_t val)
@@ -185,13 +264,15 @@ EXPORT void pu_h2(int32_t val)
 EXPORT void sp_3(int32_t val)
 {
     printf("IFC-%s, sp_3...\n", txt_dev);
-    sp_power(0, (uint8_t) val);
+    printf("CMD-%u\n", val);
+    sp(0, val);
 }
 
 EXPORT void sp_4(int32_t val)
 {
     printf("IFC-%s, sp_4...\n", txt_dev);
-    sp_power(1, (uint8_t) val);
+    printf("CMD-%u\n", val);
+    sp(1, val);
 }
 
 EXPORT void pu_h3(int32_t val)
