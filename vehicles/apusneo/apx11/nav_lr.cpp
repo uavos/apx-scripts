@@ -41,6 +41,8 @@ WING_DATA _wing = {};
 //----------------------Temperature-------------------------
 constexpr const uint16_t START_HEATER{10};
 
+using m_sw_manual = Mandala<mandala::ctr::env::sw::sw15>; //heater manual
+
 #if defined NODE_LEFT
 using m_sw = Mandala<mandala::ctr::env::sw::sw1>; //heater off/on
 #endif
@@ -72,7 +74,7 @@ int main()
 
     m_sns_temp();
 
-    m_sw();
+    m_sw_manual();
 
     //header
     _wing.header[0] = 0x4d;
@@ -118,6 +120,10 @@ EXPORT void on_telemetry()
 
 EXPORT void on_heater()
 {
+    if (m_sw_manual::value()) {
+        return;
+    }
+
     float RT = m_sns_temp::value();
 
     if (RT < START_HEATER) {
