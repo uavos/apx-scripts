@@ -120,7 +120,7 @@ EXPORT void on_telemetry()
 
 EXPORT void on_heater()
 {
-    if (m_sw_manual::value()) {
+    if ((bool) m_sw_manual::value()) {
         return;
     }
 

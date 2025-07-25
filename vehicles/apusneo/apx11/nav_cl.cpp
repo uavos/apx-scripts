@@ -2,7 +2,7 @@
 
 constexpr const char *txt_dev = "CL"; //CL
 
-constexpr const uint8_t TASK_MAIN_MS{500};
+constexpr const uint16_t TASK_MAIN_MS{1000};
 constexpr const uint16_t TASK_HEATER_MS{2000};
 
 //----------------------Temperature-------------------------
@@ -58,16 +58,17 @@ EXPORT void on_main()
 {
     m_temp::publish(m_s1::value() + 100);
 
-    uint8_t status = (m_sw1::value() & 0x01) | (m_sw2::value() & 0x02) | (m_sw3::value() & 0x04)
-                     | (m_sw4::value() & 0x08) | (m_sw5::value() & 0x10) | (m_sw6::value() & 0x20)
-                     | (m_sw7::value() & 0x40);
+    uint32_t status = ((uint32_t) m_sw1::value() << 0) | ((uint32_t) m_sw2::value() << 1)
+                      | ((uint32_t) m_sw3::value() << 2) | ((uint32_t) m_sw4::value() << 3)
+                      | ((uint32_t) m_sw5::value() << 4) | ((uint32_t) m_sw6::value() << 5)
+                      | ((uint32_t) m_sw7::value() << 6);
 
-    m_status_heater::publish(status);
+    m_status_heater::publish((uint32_t) status);
 }
 
 EXPORT void on_heater()
 {
-    if (m_sw_manual::value()) {
+    if ((bool) m_sw_manual::value()) {
         return;
     }
 
