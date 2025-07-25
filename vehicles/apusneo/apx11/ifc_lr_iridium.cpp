@@ -300,6 +300,8 @@ EXPORT void pu_h4(int32_t val)
 static const uint32_t SBDI_TIMEOUT = 1000 * 30;
 static const uint32_t WAIT_RESPONSE_TIMEOUT = 1000 * 60;
 
+static const bool PRINT_DEBUG_MESSAGES = false;
+
 static const size_t MAX_RESPONSE_SIZE = 100;
 enum MessageType {
     mtUnknown = -1,
@@ -549,12 +551,16 @@ EXPORT void onTask()
 
     if(g_state == 0) {
         if(!g_waitResponse) {
-            print("iridium: AT+CSQ");
+            if(PRINT_DEBUG_MESSAGES) {
+                print("iridium: AT+CSQ");
+            }
             sendCommand("AT+CSQ\r");
         } else if(g_response.size) {
             if(parseResponse("OK\r\n")) {
                 auto signal = parseCSQ();
-                printf("iridium: CSQ: %i\n", signal);
+                if(PRINT_DEBUG_MESSAGES) {
+                    printf("iridium: CSQ: %i\n", signal);
+                }
                 if(signal >= 2) {
                     g_state = 1;
                 } else {
@@ -566,13 +572,17 @@ EXPORT void onTask()
         }
     } else if(g_state == 1) {
         if(!g_waitResponse) {
-            print("iridium: AT+SBDLOE");
+            if(PRINT_DEBUG_MESSAGES) {
+                print("iridium: AT+SBDLOE");
+            }
             sendCommand("AT+SBDLOE\r");
         } else if(g_response.size) {
             if(parseResponse("OK\r\n")) {
                 if(parseSBDLOE()) {
-                    printf("iridium: SBDLOE valid: %i\n", g_lockoutState.valid);
-                    printf("iridium: SBDLOE timeout: %i\n", g_lockoutState.timeout);
+                    if(PRINT_DEBUG_MESSAGES) {
+                        printf("iridium: SBDLOE valid: %i\n", g_lockoutState.valid);
+                        printf("iridium: SBDLOE timeout: %i\n", g_lockoutState.timeout);
+                    }
                     if(inLockout()) { //no traffic management period
                         g_state = 0;
                     } else {
@@ -586,15 +596,19 @@ EXPORT void onTask()
         }
     } else if(g_state == 2) {
         if(!g_waitResponse) {
-            print("iridium: AT+SBDI");
+            if(PRINT_DEBUG_MESSAGES) {
+                print("iridium: AT+SBDI");
+            }
             sendCommand("AT+SBDI\r");
         } else if(g_response.size) {
             if(parseResponse("OK\r\n")) {
                 uint32_t sendState = 2;
                 uint32_t receiveState = 2;
                 if(parseSBDI(sendState, receiveState)) {
-                    printf("iridium: SBDI: %i\n", sendState);
-                    printf("iridium: SBDI: %i\n", receiveState);
+                    if(PRINT_DEBUG_MESSAGES) {
+                        printf("iridium: SBDI: %i\n", sendState);
+                        printf("iridium: SBDI: %i\n", receiveState);
+                    }
                     if(sendState == 2 || receiveState == 2) { //session fail, try again all steps
                         g_state = 0;
                     } else if(receiveState == 1) { //have incoming message, need AT+SBDRB
@@ -617,7 +631,9 @@ EXPORT void onTask()
         }
     } else if(g_state == 10) {
         if(!g_waitResponse) {
-            print("iridium: AT+SBDRB");
+            if(PRINT_DEBUG_MESSAGES) {
+                print("iridium: AT+SBDRB");
+            }
             sendCommand("AT+SBDRB\r");
         } else if(g_response.size) {
             if(parseResponse("OK\r\n")) {
@@ -637,13 +653,17 @@ EXPORT void onTask()
         }
     } else if(g_state == 20) {
         if(!g_waitResponse) {
-            print("iridium: AT+SBDWB1");
+            if(PRINT_DEBUG_MESSAGES) {
+                print("iridium: AT+SBDWB1");
+            }
             char cmd[12];
             snprintf(cmd, 12, "AT+SBDWB=%i\r", int32_t(1 + g_varResponseMessage.count * 6));
             sendCommand(cmd);
         } else if(g_response.size) {
             if(parseResponse("READY\r\n")) {
-                print("iridium: SBDWB1 ok");
+                if(PRINT_DEBUG_MESSAGES) {
+                    print("iridium: SBDWB1 ok");
+                }
                 sendTelemetry();
                 g_state = 21;
 
@@ -653,7 +673,9 @@ EXPORT void onTask()
     } else if(g_state == 21) {
         if(g_response.size) {
             if(parseResponse("0\r\n\r\nOK\r\n")) {
-                print("iridium: SBDWB2 ok");
+                if(PRINT_DEBUG_MESSAGES) {
+                    print("iridium: SBDWB2 ok");
+                }
                 g_state = 0;
                 // g_state = 220;
 
@@ -664,11 +686,15 @@ EXPORT void onTask()
         }
     } else if(g_state == 30) {
         if(!g_waitResponse) {
-            print("iridium: SBDD0");
+            if(PRINT_DEBUG_MESSAGES) {
+                print("iridium: SBDD0");
+            }
             sendCommand("AT+SBDD0\r");
         } else if(g_response.size) {
             if(parseResponse("0\r\n\r\nOK\r\n")) {
-                print("iridium: SBBD0 ok");
+                if(PRINT_DEBUG_MESSAGES) {
+                    print("iridium: SBBD0 ok");
+                }
                 g_state = 0;
                 g_needClearBuffer = false;
 
@@ -678,7 +704,9 @@ EXPORT void onTask()
         }
     } else if(g_state == 100) {
         if(!g_waitResponse) {
-            print("iridium: AT+GSN");
+            if(PRINT_DEBUG_MESSAGES) {
+                print("iridium: AT+GSN");
+            }
             sendCommand("AT+GSN\r");
         } else if(g_response.size) {
             if(parseResponse("OK\r\n")) {
