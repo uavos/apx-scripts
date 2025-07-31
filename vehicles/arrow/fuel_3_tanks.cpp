@@ -387,7 +387,7 @@ int main()
     algorithmOld = false;
     ignitionOld = false;
 
-    //receive(port_id, "on_serial");
+    receive(port_id, "on_serial");
 
     printf("fuel stage 1");
     task("on_task", 200);
