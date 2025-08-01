@@ -46,6 +46,7 @@ uint32_t m_timeAns1;
 uint32_t m_timeAns2;
 uint32_t m_timeAns3;
 uint32_t startTimerPumpON;
+uint32_t ignitionTotalTime{0};
 
 uint8_t pump_stage{1}; //default stage
 
@@ -68,6 +69,7 @@ using M_FUEL_V1 = Mandala<mandala::est::env::usr::u1>;
 using M_FUEL_V2 = Mandala<mandala::est::env::usr::u2>;
 using M_FUEL_V3 = Mandala<mandala::est::env::usr::u3>;
 using M_FUEL_L = Mandala<mandala::est::env::usr::u4>;
+using m_flowrate = Mandala<mandala::sns::env::fuel::rate>;
 
 using M_WARN_ANSWER1 = Mandala<mandala::est::env::usrb::b5>;
 using M_WARN_ANSWER2 = Mandala<mandala::est::env::usrb::b6>;
@@ -238,6 +240,15 @@ void check_answer_time()
     M_WARN_ANSWER3::publish((m_timeAns3 + TIME_SA * 1000 < current_time) ? 1u : 0u);
 }
 
+void calc_flowrate()
+{
+    if((bool)m_ignition::value()) {
+        ignitionTotalTime+=200;
+        float flowrate = ( 100.0f - M_FUEL_P::value() ) / ((float)ignitionTotalTime / 3600000.0f);
+        m_flowrate::publish(flowrate);
+    }
+}
+
 EXPORT void on_serial(const uint8_t *data, size_t size)
 {
     if (size == PACK_SIZE) {
@@ -304,6 +315,7 @@ EXPORT void on_task()
 
 
     check_answer_time();
+    calc_flowrate();
 
     float fl1 = M_FUEL_V1::value();
     float fl2 = M_FUEL_V2::value();
