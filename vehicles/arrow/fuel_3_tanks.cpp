@@ -382,10 +382,6 @@ int main()
     M_FUEL_V1();
     M_FUEL_V2();
     M_FUEL_V3();
-    M_FUEL_L();
-    M_WARN_ANSWER1();
-    M_WARN_ANSWER2();
-    M_WARN_ANSWER3();
 #ifdef DEBUG
     m_thr();
 #endif
