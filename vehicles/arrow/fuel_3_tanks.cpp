@@ -63,10 +63,11 @@ using m_pump1 = Mandala<mandala::est::env::usrb::b2>;
 using m_pump2 = Mandala<mandala::est::env::usrb::b3>;
 using m_pump3 = Mandala<mandala::est::env::usrb::b4>;
 
-using M_FUEL = Mandala<mandala::sns::env::fuel::level>;
+using M_FUEL_P = Mandala<mandala::sns::env::fuel::level>;
 using M_FUEL_V1 = Mandala<mandala::est::env::usr::u1>;
 using M_FUEL_V2 = Mandala<mandala::est::env::usr::u2>;
 using M_FUEL_V3 = Mandala<mandala::est::env::usr::u3>;
+using M_FUEL_L = Mandala<mandala::est::env::usr::u4>;
 
 using M_WARN_ANSWER1 = Mandala<mandala::est::env::usrb::b5>;
 using M_WARN_ANSWER2 = Mandala<mandala::est::env::usrb::b6>;
@@ -307,13 +308,16 @@ EXPORT void on_task()
     float fl1 = M_FUEL_V1::value();
     float fl2 = M_FUEL_V2::value();
     float fl3 = M_FUEL_V3::value();
-    M_FUEL::publish(fl1 + fl2 + fl3);
+    M_FUEL_L::publish(fl1 + fl2 + fl3);
 
 #ifdef DEBUG
     m_vFuelPercent1 = fl1 * 100 / V_MAX1; //for debug only
     m_vFuelPercent2 = fl2 * 100 / V_MAX2; //for debug only
     m_vFuelPercent3 = fl3 * 100 / V_MAX3; //for debug only
 #endif
+
+    M_FUEL_P::publish((m_vFuelPercent1 + m_vFuelPercent2 + m_vFuelPercent3)/3);
+
 
     ignition = (bool)m_ignition::value();
     algorithm = (bool)m_algorithm::value();
@@ -362,10 +366,11 @@ int main()
     m_ignition();
     m_ers();
     m_algorithm();
-    M_FUEL();
+    M_FUEL_P();
     M_FUEL_V1();
     M_FUEL_V2();
     M_FUEL_V3();
+    M_FUEL_L();
     M_WARN_ANSWER1();
     M_WARN_ANSWER2();
     M_WARN_ANSWER3();
