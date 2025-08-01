@@ -33,7 +33,8 @@ const uint8_t PACK_SIZE{9};
 
 
 const uint8_t TIME_SA{2};       //sec
-const uint32_t DELAY_PUMP{15000}; //msec between different pumps
+const uint8_t DELAY_PUMP{15}; //sec between different pumps
+const uint16_t FUEL_TASK_PERIOD{200}; //msec
 
 uint8_t msg[PACK_SIZE];
 uint8_t m_sensRequest{0}; //0 - sens1, 1 - sens2, 2 - sens3
@@ -113,7 +114,7 @@ void turn_on_all_pumps()
 
 void turn_on_pump_1()
 {
-    if (time_ms() > startTimerPumpON + DELAY_PUMP) {
+    if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
         if ((bool)m_pump2::value() || (bool)m_pump3::value()) {
             m_pump2::publish(0u);
             m_pump3::publish(0u);
@@ -128,7 +129,7 @@ void turn_on_pump_1()
 
 void turn_on_pump_2()
 {
-    if (time_ms() > startTimerPumpON + DELAY_PUMP) {
+    if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
         if ((bool)m_pump1::value() || (bool)m_pump3::value()) {
             m_pump1::publish(0u);
             m_pump3::publish(0u);
@@ -143,7 +144,7 @@ void turn_on_pump_2()
 
 void turn_on_pump_3()
 {
-    if (time_ms() > startTimerPumpON + DELAY_PUMP) {
+    if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
         if ((bool)m_pump1::value() || (bool)m_pump2::value()) {
             m_pump1::publish(0u);
             m_pump2::publish(0u);
@@ -243,7 +244,7 @@ void check_answer_time()
 void calc_flowrate()
 {
     if((bool)m_ignition::value()) {
-        ignitionTotalTime+=200;
+        ignitionTotalTime += FUEL_TASK_PERIOD;
         float flowrate = ( 100.0f - M_FUEL_P::value() ) / ((float)ignitionTotalTime / 3600000.0f);
         m_flowrate::publish(flowrate);
     }
@@ -403,7 +404,7 @@ int main()
     receive(port_id, "on_serial");
 
     printf("fuel stage 1");
-    task("on_task", 200);
+    task("on_task", FUEL_TASK_PERIOD);
 
     return 0;
 }
