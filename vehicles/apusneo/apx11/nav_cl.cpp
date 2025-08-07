@@ -27,6 +27,9 @@ using m_s1 = Mandala<mandala::sns::env::scr::s1>;
 //set
 using m_temp = Mandala<mandala::est::env::usrc::c7>;
 
+using m_ltt = Mandala<mandala::est::env::sys::ltt>;
+using m_pwr_satcom = Mandala<mandala::ctr::env::pwr::satcom>;
+
 int main()
 {
     //subscribe
@@ -46,6 +49,8 @@ int main()
 
     m_sw_manual();
 
+    m_ltt("on_ltt"); // subscribe `on changed` event
+
     task("on_main", TASK_MAIN_MS);
     task("on_heater", TASK_HEATER_MS);
 
@@ -64,6 +69,13 @@ EXPORT void on_main()
                       | ((uint32_t) m_sw7::value() << 6);
 
     m_status_heater::publish((uint32_t) status);
+
+}
+
+EXPORT void on_ltt()
+{
+    if(m_ltt::value() > 0)
+        m_pwr_satcom::publish(1u);
 }
 
 EXPORT void on_heater()
