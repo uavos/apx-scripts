@@ -18,6 +18,7 @@ using m_pump_rpm = Mandala<mandala::est::env::usrw::w2>; //pump rpm right
 #endif
 
 using m_pwr_eng = Mandala<mandala::ctr::env::pwr::eng>;
+using m_pwr_satcom = Mandala<mandala::ctr::env::pwr::satcom>;
 
 constexpr const uint8_t TASK_MAIN_MS{50}; //20Hz
 
@@ -63,6 +64,7 @@ int main()
 {
     m_pump_rpm_raw("on_pump_rpm_raw"); // subscribe `on changed` event
     m_pwr_eng("on_pwr_eng");           // subscribe `on changed` event
+    m_pwr_satcom();
 
     task("pu_hold"); // 0/1
     task("pu_rb");   // 0..100
@@ -541,6 +543,11 @@ EXPORT void serialHandler(const uint8_t *data, size_t size)
 
 EXPORT void onTask()
 {
+
+    if ((bool)m_pwr_satcom::value() == false) {
+        return;
+    }
+
     if(inLockout() || inIdle()) {
         return;
     }
