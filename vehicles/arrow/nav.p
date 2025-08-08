@@ -850,6 +850,10 @@ pump_stage_4() //get fuel from tank 1 and 2 untill empty
 
 fuel_auto_control()
 {
+    if(get_var(f_ctr_throttle) > 0.85) {
+      turn_on_all_pumps();
+      return;
+    }
     switch (pump_stage) {
       case 1: pump_stage_1();
       case 2: pump_stage_2();

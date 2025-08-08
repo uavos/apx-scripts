@@ -58,6 +58,7 @@ bool ignition;
 bool ignitionOld;
 
 using m_ignition = Mandala<mandala::ctr::env::pwr::eng>;
+using m_thr = Mandala<mandala::ctr::nav::eng::thr>;
 using m_ers = Mandala<mandala::ctr::env::ers::launch>;
 using m_algorithm = Mandala<mandala::est::env::usrb::b1>;
 
@@ -223,7 +224,11 @@ void pump_stage_4() //get fuel from tank 1 and 2 until empty
 }
 
 void fuel_auto_control()
-{
+{   
+    if(m_thr::value() > 0.85f) {
+        turn_on_all_pumps();
+        return;
+    }
     switch (pump_stage) {
         case 1: pump_stage_1(); break;
         case 2: pump_stage_2(); break;
@@ -383,9 +388,7 @@ int main()
     M_FUEL_V1();
     M_FUEL_V2();
     M_FUEL_V3();
-#ifdef DEBUG
     m_thr();
-#endif
 
     m_pump1::publish(0u);
     m_pump2::publish(0u);
