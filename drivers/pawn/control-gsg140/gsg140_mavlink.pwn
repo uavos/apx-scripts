@@ -1,4 +1,4 @@
-// FIRMWARE 2.72.2 REQUIRED
+// FIRMWARE 2.72.3 REQUIRED
 // Hardware/IMU Sensor Settings/Heading correction factor = 200
 // External IMU/ROLL and PITCH angles                     = Compensate for linear accelerations only
 // External IMU/YAW (heading) angle                       = Use as heading reference
