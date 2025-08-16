@@ -1,4 +1,4 @@
-// FIRMWARE 2.72.2 REQUIRED
+// FIRMWARE 2.72.3 REQUIRED
 // Hardware/IMU Sensor Settings/Heading correction factor = 200
 // External IMU/ROLL and PITCH angles                     = Compensate for linear accelerations only
 // External IMU/YAW (heading) angle                       = Use as heading reference
@@ -34,7 +34,7 @@ const COMMAND_LONG_ID = 76;
 const COMMAND_LONG_MSG_SIZE = 33;
 const COMMAND_LONG_EXTRA_CRC = 152;
 
-const Float:INPUT_TYPE_POS = 772.0;
+const Float:INPUT_TYPE_POS = 260.0;     //772 for precise agressive control
 const Float:INPUT_TYPE_SPEED = 1.0;
 
 const HEARTBEAT_INTERVAL = 1000;
@@ -463,4 +463,3 @@ forward @OnLookHereCommands(cnt)
     g_camctr_yaw = unpackFloat(buffer, 0);
     g_camctr_pitch = unpackFloat(buffer, 4);
 }
-
