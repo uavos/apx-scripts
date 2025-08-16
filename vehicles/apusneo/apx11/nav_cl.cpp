@@ -28,6 +28,11 @@ using m_s1 = Mandala<mandala::sns::env::scr::s1>;
 using m_temp = Mandala<mandala::est::env::usrc::c7>;
 
 using m_ltt = Mandala<mandala::est::env::sys::ltt>;
+using m_health = Mandala<mandala::est::env::sys::health>;
+
+using m_thr_cut = Mandala<mandala::cmd::nav::eng::cut>;
+using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
+
 using m_pwr_satcom = Mandala<mandala::ctr::env::pwr::satcom>;
 
 int main()
@@ -49,7 +54,8 @@ int main()
 
     m_sw_manual();
 
-    m_ltt("on_ltt"); // subscribe `on changed` event
+    m_ltt();
+    m_health();
 
     task("on_main", TASK_MAIN_MS);
     task("on_heater", TASK_HEATER_MS);
@@ -70,12 +76,16 @@ EXPORT void on_main()
 
     m_status_heater::publish((uint32_t) status);
 
-}
+    if ((uint32_t) m_ltt::value() < 10) {
+        m_health::publish((uint32_t) mandala::sys_health_normal);
+    }
 
-EXPORT void on_ltt()
-{
-    if(m_ltt::value() > 0)
-        m_pwr_satcom::publish(1u);
+    if ((uint32_t) m_health::value() == mandala::sys_health_warning) {
+        m_pwr_satcom::publish((uint32_t) mandala::pwr_satcom_on);
+
+        m_thr_cut::publish((uint32_t) mandala::eng_cut_on);
+        m_mode::publish((uint32_t) mandala::proc_mode_LANDING);
+    }
 }
 
 EXPORT void on_heater()
