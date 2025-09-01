@@ -80,7 +80,7 @@ int main()
     task("pu_h4"); // 0..30
 #endif
 
-    task("on_main", TASK_MAIN_MS); //20 Hz
+    schedule_periodic(task("on_main"), TASK_MAIN_MS);
 
     printf("IFC:%s Script ready...\n", txt_dev);
 

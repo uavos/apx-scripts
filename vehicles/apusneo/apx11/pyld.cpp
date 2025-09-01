@@ -61,7 +61,7 @@ int main()
     _pyld.header[2] = RECEIVER_ID | ((NODE_ID << 4) & 0xF0);
     _pyld.header[3] = MSG6_ID;
 
-    task("on_main", TASK_MAIN_MS);
+    schedule_periodic(task("on_main"), TASK_MAIN_MS);
 
     printf("%s Script ready...\n", txt_dev);
 

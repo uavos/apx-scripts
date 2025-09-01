@@ -2,7 +2,7 @@
 
 constexpr const port_id_t PORT_ID_TLM_SYNC{42};
 
-constexpr const uint16_t TASK_DELAY_MS{10}; //100Hz
+constexpr const uint16_t TASK_MAIN_MS{10}; //100Hz
 
 constexpr const uint8_t NODE_CNT{2};
 constexpr const uint8_t MSG_CNT{6};
@@ -25,7 +25,7 @@ int main()
     uint32_t now = time_ms();
     schedule_sync_tlm_timer = now;
 
-    task("on_task", TASK_DELAY_MS); //100 Hz
+    schedule_periodic(task("on_main"), TASK_MAIN_MS);
 
     task("tlm_off"); //GCS with terminal command `vmexec("tlm_off")`
     task("tlm_l");   //GCS with terminal command `vmexec("tlm_l")`
@@ -55,7 +55,7 @@ void telemetry_sync()
     send(PORT_ID_TLM_SYNC, data, 2, true);
 }
 
-EXPORT void on_task()
+EXPORT void on_main()
 {
     uint32_t now = time_ms();
     if (on_sync_telemetry && now - schedule_sync_tlm_timer > SCHEDULE_SYNC_TLM_TIMEOUT * TLM_DIV) {

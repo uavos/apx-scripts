@@ -12,7 +12,7 @@ int main()
 {
     m_s1();
 
-    task("on_main", TASK_MAIN_MS);
+    schedule_periodic(task("on_main"), TASK_MAIN_MS);
 
     return 0;
 }

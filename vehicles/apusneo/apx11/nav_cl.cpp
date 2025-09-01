@@ -57,8 +57,8 @@ int main()
     m_ltt();
     m_health();
 
-    task("on_main", TASK_MAIN_MS);
-    task("on_heater", TASK_HEATER_MS);
+    schedule_periodic(task("on_main"), TASK_MAIN_MS);
+    schedule_periodic(task("on_heater"), TASK_HEATER_MS);
 
     printf("NAV:%s Script ready...\n", txt_dev);
 

@@ -23,7 +23,7 @@ using m_agl = Mandala<mandala::sns::nav::agl::laser>; //agl
 
 int main()
 {
-    task("on_task_agl", TASK_AGL_MS);
+    schedule_periodic(task("on_agl"), TASK_AGL_MS);
 
     receive(PORT_ID_AGL, "aglHandler");
     receive(PORT_ID_AIR, "airHandler");
@@ -56,7 +56,7 @@ float wrap(float x, float low, float high)
     return x;
 }
 
-EXPORT void on_task_agl()
+EXPORT void on_agl()
 {
     //agl
     send(PORT_ID_AGL, (const uint8_t *) "?LD\r\n", 5, true);

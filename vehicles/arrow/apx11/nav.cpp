@@ -7,8 +7,8 @@
 
 static constexpr const port_id_t port_fuel_id{11};
 
-const uint16_t MAIN_TASK_PERIOD{100}; //msec
-const uint16_t FUEL_TASK_PERIOD{500}; //msec
+const uint16_t TASK_MAIN_MS{100}; //msec
+const uint16_t TASK_FUEL_MS{500}; //msec
 
 //FUEL
 const uint8_t ADR_FUEL_SENS1{85};
@@ -110,8 +110,8 @@ using m_ers2 = Mandala<mandala::est::env::usrb::b1>;
 
 int main()
 {
-    task("on_main_task", MAIN_TASK_PERIOD);
-    task("on_fuel_task", FUEL_TASK_PERIOD);
+    schedule_periodic(task("on_main"), TASK_MAIN_MS);
+    schedule_periodic(task("on_fuel"), TASK_FUEL_MS);
 
     receive(port_fuel_id, "on_fuel_serial");
 
@@ -140,7 +140,7 @@ int main()
     return 0;
 }
 
-EXPORT void on_main_task()
+EXPORT void on_main()
 {
     //Safety
     if ((uint32_t) m_ltt::value() < 10) {
@@ -344,7 +344,7 @@ void check_answer_time()
     m_warn3::publish((fuel[2].time_ans + TIME_SA * 1000 < now) ? 1u : 0u);
 }
 
-EXPORT void on_fuel_task()
+EXPORT void on_fuel()
 {
     check_answer_time();
 
