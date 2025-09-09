@@ -8,6 +8,7 @@
 static constexpr const port_id_t port_fuel_id{11};
 
 const uint16_t TASK_MAIN_MS{100}; //msec
+const uint16_t TASK_ERS_MS{100};  //msec
 const uint16_t TASK_FUEL_MS{500}; //msec
 
 //FUEL
@@ -76,8 +77,6 @@ struct _fuel
 _fuel fuel[3] = {_fuel(V_MAX1), _fuel(V_MAX2), _fuel(V_MAX3)};
 
 //ERS
-uint32_t timer_ers = 0;
-
 using m_ignition = Mandala<mandala::ctr::env::pwr::eng>;
 using m_thr = Mandala<mandala::ctr::nav::eng::thr>;
 
@@ -99,50 +98,119 @@ using m_warn3 = Mandala<mandala::est::env::usrb::b7>;
 
 using m_fuel_mc = Mandala<mandala::ctr::env::sw::sw8>; //manual control
 
-//safety
+//datalink
 using m_ltt = Mandala<mandala::est::env::sys::ltt>;
 using m_health = Mandala<mandala::est::env::sys::health>;
 using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
+using m_stage = Mandala<mandala::cmd::nav::proc::stage>;
+
+using m_roll = Mandala<mandala::est::nav::att::roll>;
+using m_pitch = Mandala<mandala::est::nav::att::pitch>;
+using m_airspeed = Mandala<mandala::est::nav::air::airspeed>;
+using m_altitude = Mandala<mandala::est::nav::pos::altitude>;
+using m_vspeed = Mandala<mandala::est::nav::pos::vspeed>;
+
+using m_ax = Mandala<mandala::est::nav::acc::x>;
+using m_ay = Mandala<mandala::est::nav::acc::y>;
+using m_az = Mandala<mandala::est::nav::acc::z>;
+
+//emergency parachute deployment
+static constexpr const float ERS_VDOWN{-30.f}; //[m/sec]
+static constexpr const float ERS_ROLL{70.f};   //[dec]
+static constexpr const float ERS_PITCH{50.f};  //[dec]
+
+//parachute release
+static constexpr const float GRAVITY_NORM{9.8f};   //[m/sec^2]
+static constexpr const float RELEASE_VDOWN{-0.5f}; //[m/sec]
+static constexpr const float G_MAX{5.5f};          //[G]
+
+static constexpr const float AIR_ALT{500.f};  //[m]
+static constexpr const float AIR_SPD{20.f};   //[m/sec]
+static constexpr const float ERS2_ALT{200.f}; //[m]
+static constexpr const float ERS3_ALT{10.f};  //[m]
+
+uint16_t WAIT_TIME{3000}; //[msec]
+bool g_onERS{false};      //flag that ERS1 was activated
+
+uint32_t g_lastRollPitchTime{0};
+uint32_t g_lastVspeedTime{0};
+uint32_t g_LastVspeedReleaseTime{0};
+uint32_t g_LastMaxRollInTakeoffModeTime{0};
+
+bool g_checkAirLockout{false};
+bool g_lowAltLockout{false};
+bool g_AttAndVSpeedLockout{false};
+bool g_onERS2Lockout{false};
+bool g_onERS3Lockout{false};
 
 //ers
 using m_ers1 = Mandala<mandala::ctr::env::ers::launch>;
 using m_ers2 = Mandala<mandala::est::env::usrb::b1>;
+using m_ers3 = Mandala<mandala::ctr::env::ers::rel>;
 
 int main()
 {
     schedule_periodic(task("on_main"), TASK_MAIN_MS);
+    schedule_periodic(task("on_ers"), TASK_ERS_MS);
     schedule_periodic(task("on_fuel"), TASK_FUEL_MS);
 
     receive(port_fuel_id, "on_fuel_serial");
 
+    m_ers1::publish(0u);
+    m_ers2::publish(0u);
+    m_ers3::publish(0u);
+
+    m_roll();
+    m_pitch();
+    m_airspeed();
+    m_altitude();
+    m_vspeed();
+    m_ax();
+    m_ay();
+    m_az();
+
+    //datalink
     m_ltt();
     m_health();
+    m_mode();
+    m_stage();
 
+    //ers
     m_ers1();
+    m_ers2();
     m_ignition();
     m_thr();
+
+    //fuel
+    m_fuel_p();
+    m_fuel_l();
 
     m_fuel1();
     m_fuel2();
     m_fuel3();
-    m_fuel_p();
-    m_fuel_l();
+
     m_pump1();
     m_pump2();
     m_pump3();
+
     m_warn1();
     m_warn2();
     m_warn3();
+
     m_fuel_mc();
 
-    timer_ers = time_ms();
+    uint32_t now = time_ms();
+
+    g_lastRollPitchTime = now;
+    g_lastVspeedTime = now;
+    g_LastVspeedReleaseTime = now;
 
     return 0;
 }
 
 EXPORT void on_main()
 {
-    //Safety
+    //datalink
     if ((uint32_t) m_ltt::value() < 10) {
         m_health::publish((uint32_t) mandala::sys_health_normal);
     }
@@ -150,15 +218,143 @@ EXPORT void on_main()
     if ((uint32_t) m_health::value() == mandala::sys_health_warning) {
         m_mode::publish((uint32_t) mandala::proc_mode_LANDING);
     }
+}
 
-    //ERS
-    if ((uint32_t) m_ers1::value() == mandala::ers_launch_on) {
-        if ((time_ms() - timer_ers) > 3000) {
-            m_ers2::publish(1u);
+bool checkRollAndPitch()
+{
+    const float roll = fabs(m_roll::value() * R2D);
+    const float pitch = fabs(m_pitch::value() * R2D);
+    const uint32_t now = time_ms();
+
+    if (roll > ERS_ROLL || pitch > ERS_PITCH) {
+        return (now - g_lastRollPitchTime > 2000);
+    }
+    g_lastRollPitchTime = now;
+
+    return false;
+}
+
+bool checkVSpeed()
+{
+    const float vspeed = m_vspeed::value();
+    const uint32_t now = time_ms();
+
+    if (vspeed < ERS_VDOWN) {
+        return (now - g_lastVspeedTime > 1000);
+    }
+    g_lastVspeedTime = now;
+
+    return false;
+}
+
+bool checkTakeOFFSafety()
+{
+    const bool mode = (uint8_t) m_mode::value() == mandala::proc_mode_TAKEOFF;
+    const bool roll = fabs(m_roll::value() * R2D) > ERS_ROLL;
+    const bool vspeed = m_vspeed::value() < -1.f;
+    const uint32_t now = time_ms();
+
+    if (mode && roll && vspeed) {
+        return (now - g_LastMaxRollInTakeoffModeTime > 1000);
+    }
+    g_LastMaxRollInTakeoffModeTime = now;
+
+    return false;
+}
+
+bool checkVSpeedAndAltitudeRelease()
+{
+    const float vspeed = m_vspeed::value();
+    const float altitude = m_altitude::value();
+    const uint32_t now = time_ms();
+
+    if ((vspeed > RELEASE_VDOWN) && (altitude < ERS3_ALT)) {
+        return (now - g_LastVspeedReleaseTime > 500);
+    }
+    g_LastVspeedReleaseTime = now;
+
+    return false;
+}
+
+bool checkGForceRelease()
+{
+    float altitude = (float) m_altitude::value();
+
+    float Ax = (float) m_ax::value() / GRAVITY_NORM;
+    float Ay = (float) m_ay::value() / GRAVITY_NORM;
+    float Az = (float) m_az::value() / GRAVITY_NORM;
+
+    float val = sqrt(Ax * Ax + Ay * Ay + Az * Az);
+
+    if (altitude < ERS3_ALT && val > G_MAX) {
+        printf("VM:G_VAL %f\n", val);
+        return true;
+    }
+
+    return false;
+}
+
+EXPORT void on_ers()
+{
+    const float altitude = (float) m_altitude::value();
+    const float airspeed = (float) m_airspeed::value();
+    const bool ers1 = (bool) m_ers1::value();
+
+    //check air state
+    if (!g_checkAirLockout && altitude > AIR_ALT && airspeed > AIR_SPD) {
+        g_checkAirLockout = true;
+        printf("VM:Start AIR\n");
+    }
+
+    //minimum safe altitude for parachute release
+    //if (g_checkAirLockout && !g_lowAltLockout && altitude < ERS2_ALT) {
+    //    g_lowAltLockout = true;
+    //    g_onERS = true;
+    //    WAIT_TIME = 100;
+    //    m_ers1::publish(1u);
+    //    printf("VM:Low alt. ERS on\n");
+    //}
+
+    const bool is_rp = checkRollAndPitch();
+    const bool is_vspd = checkVSpeed();
+
+    const bool ers = (g_checkAirLockout && !g_AttAndVSpeedLockout && (is_rp || is_vspd)) || checkTakeOFFSafety();
+
+    if (ers) {
+        g_AttAndVSpeedLockout = true;
+        g_onERS = true;
+        m_ers1::publish(1u);
+        if (altitude < ERS2_ALT) {
+            WAIT_TIME = 100;
         }
-    } else {
-        timer_ers = time_ms();
-        m_ers2::publish(0u);
+
+        printf("VM:ERS1 on\n");
+        printf("VM:rp %d\n", is_rp);
+        printf("VM:vspd %d\n", is_vspd);
+    }
+
+    if (ers1 || g_onERS) {
+        g_onERS = true;
+        sleep(WAIT_TIME);
+        WAIT_TIME = 0;
+
+        //main parachute
+        if (!g_onERS2Lockout && altitude < ERS2_ALT) {
+            g_onERS2Lockout = true;
+            m_ers2::publish(1u);
+            printf("VM:ERS2 on\n");
+        }
+
+        //release parachute
+        const bool lvs_release = checkVSpeedAndAltitudeRelease();
+        const bool gmax_release = checkGForceRelease();
+        if (g_onERS2Lockout && !g_onERS3Lockout && (lvs_release || gmax_release) && (altitude < ERS3_ALT)) {
+            g_onERS3Lockout = true;
+            m_ers3::publish(1u);
+            printf("VM:ERS3 ok\n");
+            printf("VM:LVS %u\n", lvs_release);
+            printf("VM:GMAX %u\n", gmax_release);
+        }
     }
 }
 
