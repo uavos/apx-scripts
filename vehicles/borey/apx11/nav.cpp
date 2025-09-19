@@ -68,6 +68,8 @@ int main()
     m_health();
     m_mode();
 
+    m_air();
+
     m_airspeed();
     m_altitude();
     m_vspeed();
