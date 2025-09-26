@@ -78,7 +78,6 @@ _fuel fuel[3] = {_fuel(V_MAX1), _fuel(V_MAX2), _fuel(V_MAX3)};
 
 //ERS
 using m_ignition = Mandala<mandala::ctr::env::pwr::eng>;
-using m_thr = Mandala<mandala::ctr::nav::eng::thr>;
 
 //fuel
 using m_fuel1 = Mandala<mandala::est::env::usr::u5>;
@@ -179,7 +178,6 @@ int main()
     m_ers1();
     m_ers2();
     m_ignition();
-    m_thr();
 
     //fuel
     m_fuel_p();
@@ -511,10 +509,6 @@ void pump_stage_4() //get fuel from tank 1 and 2 until empty
 
 void fuel_auto_control()
 {
-    if (m_thr::value() > 0.85f) {
-        turn_on_all_pumps();
-        return;
-    }
     switch (pump_stage) {
     case 1:
         pump_stage_1();
