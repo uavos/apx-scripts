@@ -12,9 +12,9 @@ const uint16_t TASK_ERS_MS{100};  //msec
 const uint16_t TASK_FUEL_MS{500}; //msec
 
 //FUEL
-const uint8_t ADR_FUEL_SENS1{85};
-const uint8_t ADR_FUEL_SENS2{86};
-const uint8_t ADR_FUEL_SENS3{87};
+const uint8_t ADR_FUEL_SENS1{75};
+const uint8_t ADR_FUEL_SENS2{76};
+const uint8_t ADR_FUEL_SENS3{77};
 
 const uint8_t MSG_FUEL_SIZE{9}; //FUEL
 
@@ -52,6 +52,7 @@ const uint8_t DELAY_PUMP{15}; //sec between different pumps
 
 bool fuel_mc_old{false};
 bool ignition_old{false};
+
 struct _fuel
 {
     _fuel(float v_max)
@@ -76,8 +77,9 @@ struct _fuel
 
 _fuel fuel[3] = {_fuel(V_MAX1), _fuel(V_MAX2), _fuel(V_MAX3)};
 
-//ERS
-using m_ignition = Mandala<mandala::ctr::env::pwr::eng>;
+//Engine
+using m_pwr_eng = Mandala<mandala::ctr::env::pwr::eng>;
+using m_eng_cut = Mandala<mandala::cmd::nav::eng::cut>;
 
 //fuel
 using m_fuel1 = Mandala<mandala::est::env::usr::u5>;
@@ -102,6 +104,13 @@ using m_ltt = Mandala<mandala::est::env::sys::ltt>;
 using m_health = Mandala<mandala::est::env::sys::health>;
 using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
 using m_stage = Mandala<mandala::cmd::nav::proc::stage>;
+
+//ers
+using m_ers1 = Mandala<mandala::ctr::env::ers::launch>;
+using m_ers2 = Mandala<mandala::est::env::usrb::b1>;
+using m_ers3 = Mandala<mandala::ctr::env::ers::rel>;
+
+using m_air = Mandala<mandala::est::env::usrb::b8>;
 
 using m_roll = Mandala<mandala::est::nav::att::roll>;
 using m_pitch = Mandala<mandala::est::nav::att::pitch>;
@@ -142,11 +151,6 @@ bool g_AttAndVSpeedLockout{false};
 bool g_onERS2Lockout{false};
 bool g_onERS3Lockout{false};
 
-//ers
-using m_ers1 = Mandala<mandala::ctr::env::ers::launch>;
-using m_ers2 = Mandala<mandala::est::env::usrb::b1>;
-using m_ers3 = Mandala<mandala::ctr::env::ers::rel>;
-
 int main()
 {
     schedule_periodic(task("on_main"), TASK_MAIN_MS);
@@ -154,30 +158,6 @@ int main()
     schedule_periodic(task("on_fuel"), TASK_FUEL_MS);
 
     receive(port_fuel_id, "on_fuel_serial");
-
-    m_ers1::publish(0u);
-    m_ers2::publish(0u);
-    m_ers3::publish(0u);
-
-    m_roll();
-    m_pitch();
-    m_airspeed();
-    m_altitude();
-    m_vspeed();
-    m_ax();
-    m_ay();
-    m_az();
-
-    //datalink
-    m_ltt();
-    m_health();
-    m_mode();
-    m_stage();
-
-    //ers
-    m_ers1();
-    m_ers2();
-    m_ignition();
 
     //fuel
     m_fuel_p();
@@ -197,11 +177,42 @@ int main()
 
     m_fuel_mc();
 
+    //datalink
+    m_ltt();
+    m_health();
+    m_mode();
+    m_stage();
+
+    //ers
+    m_ers1();
+    m_ers2();
+    m_ers3();
+
+    m_pwr_eng();
+    m_air();
+
+    m_roll();
+    m_pitch();
+    m_airspeed();
+    m_altitude();
+    m_vspeed();
+    m_ax();
+    m_ay();
+    m_az();
+
     uint32_t now = time_ms();
 
     g_lastRollPitchTime = now;
     g_lastVspeedTime = now;
     g_LastVspeedReleaseTime = now;
+
+    m_ers1::publish(false);
+    m_ers2::publish(false);
+    m_ers3::publish(false);
+
+    m_air::publish(false);
+
+    m_ers1("on_launch"); // subscribe
 
     return 0;
 }
@@ -213,7 +224,8 @@ EXPORT void on_main()
         m_health::publish((uint32_t) mandala::sys_health_normal);
     }
 
-    if ((uint32_t) m_health::value() == mandala::sys_health_warning) {
+    if ((uint32_t) m_health::value() == mandala::sys_health_warning
+        && (uint32_t) m_mode::value() != mandala::proc_mode_TAXI) {
         m_mode::publish((uint32_t) mandala::proc_mode_LANDING);
     }
 }
@@ -301,6 +313,7 @@ EXPORT void on_ers()
     //check air state
     if (!g_checkAirLockout && altitude > AIR_ALT && airspeed > AIR_SPD) {
         g_checkAirLockout = true;
+        m_air::publish(true);
         printf("VM:Start AIR\n");
     }
 
@@ -313,15 +326,16 @@ EXPORT void on_ers()
     //    printf("VM:Low alt. ERS on\n");
     //}
 
+    const bool m_air_val = (bool) m_air::value() || g_checkAirLockout;
     const bool is_rp = checkRollAndPitch();
     const bool is_vspd = checkVSpeed();
 
-    const bool ers = (g_checkAirLockout && !g_AttAndVSpeedLockout && (is_rp || is_vspd)) || checkTakeOFFSafety();
+    const bool ers = (m_air_val && !g_AttAndVSpeedLockout && (is_rp || is_vspd)) || checkTakeOFFSafety();
 
     if (ers) {
         g_AttAndVSpeedLockout = true;
         g_onERS = true;
-        m_ers1::publish(1u);
+        m_ers1::publish(true);
         if (altitude < ERS2_ALT) {
             WAIT_TIME = 100;
         }
@@ -339,7 +353,7 @@ EXPORT void on_ers()
         //main parachute
         if (!g_onERS2Lockout && altitude < ERS2_ALT) {
             g_onERS2Lockout = true;
-            m_ers2::publish(1u);
+            m_ers2::publish(true);
             printf("VM:ERS2 on\n");
         }
 
@@ -348,11 +362,20 @@ EXPORT void on_ers()
         const bool gmax_release = checkGForceRelease();
         if (g_onERS2Lockout && !g_onERS3Lockout && (lvs_release || gmax_release) && (altitude < ERS3_ALT)) {
             g_onERS3Lockout = true;
-            m_ers3::publish(1u);
+            m_ers3::publish(true);
             printf("VM:ERS3 ok\n");
             printf("VM:LVS %u\n", lvs_release);
             printf("VM:GMAX %u\n", gmax_release);
         }
+    }
+}
+
+EXPORT void on_launch()
+{
+    if ((bool) m_ers1::value()) {
+        sleep(100);
+        m_eng_cut::publish(true);
+        m_pwr_eng::publish(false);
     }
 }
 
@@ -385,28 +408,28 @@ EXPORT uint8_t calcCRC(const uint8_t *buf, size_t size)
 
 void turn_off_all_pumps()
 {
-    m_pump1::publish(0u);
-    m_pump2::publish(0u);
-    m_pump3::publish(0u);
+    m_pump1::publish(false);
+    m_pump2::publish(false);
+    m_pump3::publish(false);
 }
 
 void turn_on_all_pumps()
 {
-    m_pump1::publish(1u);
-    m_pump2::publish(1u);
-    m_pump3::publish(1u);
+    m_pump1::publish(true);
+    m_pump2::publish(true);
+    m_pump3::publish(true);
 }
 
 void turn_on_pump_1()
 {
     if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
         if ((bool) m_pump2::value() || (bool) m_pump3::value()) {
-            m_pump2::publish(0u);
-            m_pump3::publish(0u);
+            m_pump2::publish(false);
+            m_pump3::publish(false);
             return;
         }
         if (!(bool) m_pump1::value()) {
-            m_pump1::publish(1u);
+            m_pump1::publish(true);
             startTimerPumpON = time_ms();
         }
     }
@@ -416,12 +439,12 @@ void turn_on_pump_2()
 {
     if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
         if ((bool) m_pump1::value() || (bool) m_pump3::value()) {
-            m_pump1::publish(0u);
-            m_pump3::publish(0u);
+            m_pump1::publish(false);
+            m_pump3::publish(false);
             return;
         }
         if (!(bool) m_pump2::value()) {
-            m_pump2::publish(1u);
+            m_pump2::publish(true);
             startTimerPumpON = time_ms();
         }
     }
@@ -431,12 +454,12 @@ void turn_on_pump_3()
 {
     if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
         if ((bool) m_pump1::value() || (bool) m_pump2::value()) {
-            m_pump1::publish(0u);
-            m_pump2::publish(0u);
+            m_pump1::publish(false);
+            m_pump2::publish(false);
             return;
         }
         if (!(bool) m_pump3::value()) {
-            m_pump3::publish(1u);
+            m_pump3::publish(true);
             startTimerPumpON = time_ms();
         }
     }
@@ -529,9 +552,9 @@ void check_answer_time()
 {
     uint32_t now = time_ms();
 
-    m_warn1::publish((fuel[0].time_ans + TIME_SA * 1000 < now) ? 1u : 0u);
-    m_warn2::publish((fuel[1].time_ans + TIME_SA * 1000 < now) ? 1u : 0u);
-    m_warn3::publish((fuel[2].time_ans + TIME_SA * 1000 < now) ? 1u : 0u);
+    m_warn1::publish((fuel[0].time_ans + TIME_SA * 1000 < now) ? true : false);
+    m_warn2::publish((fuel[1].time_ans + TIME_SA * 1000 < now) ? true : false);
+    m_warn3::publish((fuel[2].time_ans + TIME_SA * 1000 < now) ? true : false);
 }
 
 EXPORT void on_fuel()
@@ -545,7 +568,7 @@ EXPORT void on_fuel()
     m_fuel_l::publish(fuel[0].liters + fuel[1].liters + fuel[2].liters);
     m_fuel_p::publish((fuel[0].percent + fuel[1].percent + fuel[2].percent) / 3.f);
 
-    const bool ignition = (bool) m_ignition::value();
+    const bool ignition = (bool) m_pwr_eng::value();
     const bool fuel_mc = (bool) m_fuel_mc::value();
     const bool ers = (bool) m_ers1::value();
 

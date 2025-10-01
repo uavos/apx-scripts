@@ -77,7 +77,7 @@ int main()
     m_ay();
     m_az();
 
-    m_air::publish(0u);
+    m_air::publish(false);
 
     m_launch("on_launch"); // subscribe
 
@@ -91,7 +91,8 @@ EXPORT void on_main()
         m_health::publish((uint32_t) mandala::sys_health_normal);
     }
 
-    if ((uint32_t) m_health::value() == mandala::sys_health_warning) {
+    if ((uint32_t) m_health::value() == mandala::sys_health_warning
+        && (uint32_t) m_mode::value() != mandala::proc_mode_TAXI) {
         m_mode::publish((uint32_t) mandala::proc_mode_LANDING);
     }
 
@@ -147,7 +148,7 @@ EXPORT void on_ers()
     //check air state
     if (!g_checkAirLockout && altitude > AIR_ALT && airspeed > AIR_SPD) {
         g_checkAirLockout = true;
-        m_air::publish(1u);
+        m_air::publish(true);
         printf("VM:Start AIR\n");
     }
 
@@ -206,6 +207,6 @@ EXPORT void on_launch()
 {
     if (m_launch::value() == 1u) {
         sleep(100);
-        m_cmd_cut::publish(1u);
+        m_cmd_cut::publish(true);
     }
 }
