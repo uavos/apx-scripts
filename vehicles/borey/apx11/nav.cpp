@@ -1,7 +1,7 @@
 #include <apx.h>
 
 constexpr const uint16_t TASK_MAIN_MS{200}; //msec
-constexpr const uint16_t TASK_ERS_MS{100};  //msec
+constexpr const uint16_t TASK_ERS_MS{50};   //msec
 
 constexpr const port_id_t PORT_ID_ESC{50};
 
@@ -49,7 +49,7 @@ static constexpr const float AIR_SPD{15.f};  //[m/sec]
 static constexpr const float GRAVITY_NORM{9.8f};   //[m/sec^2]
 static constexpr const float RELEASE_VDOWN{-0.5f}; //[m/sec]
 static constexpr const float RELEASE_ALT{10.f};    //[m]
-static constexpr const float G_MAX{5.5f};          //[G]
+static constexpr const float G_MAX{2.5f};          //[G]
 
 uint32_t g_LastVspeedReleaseTime{0};
 
@@ -132,7 +132,7 @@ bool checkGForceRelease()
 
     float val = sqrt(Ax * Ax + Ay * Ay + Az * Az);
 
-    if (altitude < RELEASE_ALT && val > G_MAX) {
+    if ((altitude < RELEASE_ALT) && (val > G_MAX)) {
         printf("VM:G_VAL %f\n", val);
         return true;
     }
@@ -153,12 +153,13 @@ EXPORT void on_ers()
     }
 
     //release parachute
+    const bool launch = (bool) m_launch::value();
     const bool m_air_val = (bool) m_air::value() || g_checkAirLockout;
     const bool lvs_release = checkVSpeedAndAltitudeRelease();
     const bool gmax_release = checkGForceRelease();
-    if (m_air_val && !g_onReleaseLockout && (altitude < RELEASE_ALT) && (lvs_release || gmax_release)) {
+    if (!g_onReleaseLockout && launch && m_air_val && (altitude < RELEASE_ALT) && (lvs_release || gmax_release)) {
         g_onReleaseLockout = true;
-        m_release::publish(1u);
+        m_release::publish(true);
         printf("VM:REL ok\n");
         printf("VM:LVS %u\n", lvs_release);
         printf("VM:GMAX %u\n", gmax_release);
