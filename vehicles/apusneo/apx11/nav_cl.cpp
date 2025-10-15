@@ -80,7 +80,8 @@ EXPORT void on_main()
         m_health::publish((uint32_t) mandala::sys_health_normal);
     }
 
-    if ((uint32_t) m_health::value() == mandala::sys_health_warning) {
+    if ((uint32_t) m_health::value() == mandala::sys_health_warning
+        && (uint32_t) m_mode::value() != mandala::proc_mode_TAXI) {
         m_pwr_satcom::publish((uint32_t) mandala::pwr_satcom_on);
 
         m_thr_cut::publish((uint32_t) mandala::eng_cut_on);

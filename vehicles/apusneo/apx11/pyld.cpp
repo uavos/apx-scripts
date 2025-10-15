@@ -45,6 +45,11 @@ using m_comp1 = Mandala<mandala::sns::env::scr::s5>;
 using m_comp2 = Mandala<mandala::sns::env::scr::s6>;
 using m_swmf1 = Mandala<mandala::sns::env::scr::s7>;
 
+using m_s10 = Mandala<mandala::sns::env::scr::s10>; //srv pos
+using m_s11 = Mandala<mandala::sns::env::scr::s11>; //srv temp
+using m_s12 = Mandala<mandala::sns::env::scr::s12>; //srv pos
+using m_s13 = Mandala<mandala::sns::env::scr::s13>; //srv temp
+
 int main()
 {
     m_room();
@@ -54,6 +59,11 @@ int main()
     m_comp1();
     m_comp2();
     m_swmf1();
+
+    m_s10();
+    m_s11();
+    m_s12();
+    m_s13();
 
     //header
     _pyld.header[0] = 0x4d;
@@ -89,6 +99,15 @@ EXPORT void on_main()
     _pyld.temp_comp[0] = (int8_t) m_comp1::value();
     _pyld.temp_comp[1] = (int8_t) m_comp2::value();
     _pyld.temp_swmf1 = (int8_t) m_swmf1::value();
+
+    _pyld.srv_antenna.pos = (int8_t) (m_s10::value() * 1.f + 60.f);
+    _pyld.srv_antenna.temp = (int8_t) m_s11::value();
+
+    _pyld.srv_valv.pos = (int8_t) (m_s12::value() * 2.2f + 73.3f);
+    _pyld.srv_valv.temp = (int8_t) m_s13::value();
+
+    //printf("temp_comp1:%.2f", _pyld.temp_comp[0]);
+    //printf("temp_comp2:%.2f", _pyld.temp_comp[1]);
 
     //crc
     _pyld.crc = calcTelemetryCRC(&_pyld.header[0], sizeof(PYLD_DATA) - 1);
