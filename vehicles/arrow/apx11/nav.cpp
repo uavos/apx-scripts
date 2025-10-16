@@ -318,13 +318,13 @@ EXPORT void on_ers()
     }
 
     //minimum safe altitude for parachute release
-    //if (g_checkAirLockout && !g_lowAltLockout && altitude < ERS2_ALT) {
-    //    g_lowAltLockout = true;
-    //    g_onERS = true;
-    //    WAIT_TIME = 100;
-    //    m_ers1::publish(1u);
-    //    printf("VM:Low alt. ERS on\n");
-    //}
+    if (g_checkAirLockout && !g_lowAltLockout && altitude < ERS2_ALT) {
+        g_lowAltLockout = true;
+        g_onERS = true;
+        WAIT_TIME = 100;
+        m_ers1::publish(1u);
+        printf("VM:Low alt. ERS on\n");
+    }
 
     const bool m_air_val = (bool) m_air::value() || g_checkAirLockout;
     const bool is_rp = checkRollAndPitch();
