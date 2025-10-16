@@ -42,7 +42,7 @@ using m_ax = Mandala<mandala::est::nav::acc::x>;
 using m_ay = Mandala<mandala::est::nav::acc::y>;
 using m_az = Mandala<mandala::est::nav::acc::z>;
 
-static constexpr const float AIR_ALT{150.f}; //[m]
+static constexpr const float AIR_ALT{100.f}; //[m]
 static constexpr const float AIR_SPD{15.f};  //[m/sec]
 
 //parachute release
@@ -133,7 +133,7 @@ bool checkGForceRelease()
     float val = sqrt(Ax * Ax + Ay * Ay + Az * Az);
 
     if ((altitude < RELEASE_ALT) && (val > G_MAX)) {
-        printf("VM:G_VAL %f\n", val);
+        printf("VM:G_VAL %.2f\n", val);
         return true;
     }
 

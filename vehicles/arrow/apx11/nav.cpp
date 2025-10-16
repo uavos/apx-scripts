@@ -297,7 +297,7 @@ bool checkGForceRelease()
     float val = sqrt(Ax * Ax + Ay * Ay + Az * Az);
 
     if (altitude < ERS3_ALT && val > G_MAX) {
-        printf("VM:G_VAL %f\n", val);
+        printf("VM:G_VAL %.2f\n", val);
         return true;
     }
 
