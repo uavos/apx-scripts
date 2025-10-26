@@ -38,6 +38,9 @@ struct PYLD_2_DATA
 
 PYLD_2_DATA _pyld = {};
 
+constexpr const float ANT_MULT{1.25f};
+constexpr const float ANT_OFFSET{0.f};
+
 //get
 using m_room = Mandala<mandala::sns::env::scr::s1>;
 using m_cam1 = Mandala<mandala::sns::env::scr::s2>;
@@ -46,12 +49,16 @@ using m_lens = Mandala<mandala::sns::env::scr::s4>;
 using m_cam2 = Mandala<mandala::sns::env::scr::s5>;
 using m_comp = Mandala<mandala::sns::env::scr::s6>;
 using m_base_cam = Mandala<mandala::sns::env::scr::s7>;
+using m_swmf1 = Mandala<mandala::sns::env::scr::s8>;
 
 using m_s10 = Mandala<mandala::sns::env::scr::s10>; //srv pos
 using m_s11 = Mandala<mandala::sns::env::scr::s11>; //srv temp
 
 //AGL
 using m_agl = Mandala<mandala::sns::nav::agl::laser>; //agl
+
+constexpr const uint16_t SCHEDULE_PYLD2_TIMEOUT{1000};
+uint32_t pyld2_tlm_timer{};
 
 int main()
 {
@@ -70,7 +77,7 @@ int main()
     _pyld.header[0] = 0x4d;
     _pyld.header[1] = 0x41;
     _pyld.header[2] = RECEIVER_ID | ((NODE_ID << 4) & 0xF0);
-    _pyld.header[3] = MSG6_ID;
+    _pyld.header[3] = MSG7_ID;
 
     schedule_periodic(task("on_main"), TASK_MAIN_MS);
     receive(PORT_ID_AGL, "aglHandler");
@@ -78,6 +85,16 @@ int main()
     printf("%s Script ready...\n", txt_dev);
 
     return 0;
+}
+
+template<typename T>
+T limit(T value, T min, T max)
+{
+    if (value < min)
+        return min;
+    if (value > max)
+        return max;
+    return value;
 }
 
 uint8_t calcTelemetryCRC(const uint8_t *data, uint8_t size)
@@ -91,11 +108,8 @@ uint8_t calcTelemetryCRC(const uint8_t *data, uint8_t size)
     return crc;
 }
 
-EXPORT void on_main()
+void send_pyld2_telemetry()
 {
-    //agl
-    send(PORT_ID_AGL, (const uint8_t *) "?LD\r\n", 5, true);
-
     //data
     _pyld.temp_room = (int8_t) (m_room::value());
     _pyld.temp_cam1 = (int8_t) (m_cam1::value());
@@ -104,24 +118,29 @@ EXPORT void on_main()
     _pyld.temp_lens = (int8_t) m_lens::value();
     _pyld.temp_comp = (int8_t) m_comp::value();
     _pyld.temp_base_cam = (int8_t) m_base_cam::value();
-    _pyld.temp_swmf1 = 0;
+    _pyld.temp_swmf1 = (int8_t) m_swmf1::value();
 
-    //_pyld.srv_antenna.pos = (int8_t) (m_s10::value());
-    //_pyld.srv_antenna.temp = (int8_t) m_s11::value();
+    int32_t ant_pos = int32_t(m_s10::value() * ANT_MULT + ANT_OFFSET);
 
-    //printf("temp_room:%d", _pyld.temp_room);
-    //printf("temp_cam1:%d", _pyld.temp_cam1);
-    //printf("temp_cam2:%d", _pyld.temp_cam2[0]);
-    //printf("temp_cam2:%d", _pyld.temp_cam2[1]);
-    //printf("temp_lens:%d", _pyld.temp_lens);
-    //printf("temp_comp:%d", _pyld.temp_comp);
-    //printf("temp_base_cam:%d", _pyld.temp_base_cam);
-    //printf("temp_swmf1:%d", _pyld.temp_swmf1);
+    _pyld.srv_antenna.pos = (int8_t) limit(ant_pos, 0, 100);
+    _pyld.srv_antenna.temp = (int8_t) m_s11::value();
 
     //crc
-    //_pyld.crc = calcTelemetryCRC(&_pyld.header[0], sizeof(PYLD_2_DATA) - 1);
+    _pyld.crc = calcTelemetryCRC(&_pyld.header[0], sizeof(PYLD_2_DATA) - 1);
 
     send(PORT_ID_GCU, &_pyld.header, sizeof(PYLD_2_DATA), true);
+}
+
+EXPORT void on_main()
+{
+    //agl
+    send(PORT_ID_AGL, (const uint8_t *) "?LD\r\n", 5, true);
+
+    uint32_t now = time_ms();
+    if (now - pyld2_tlm_timer > SCHEDULE_PYLD2_TIMEOUT) {
+        pyld2_tlm_timer = now;
+        send_pyld2_telemetry();
+    }
 }
 
 //ASCII:ld,0:-0.66
