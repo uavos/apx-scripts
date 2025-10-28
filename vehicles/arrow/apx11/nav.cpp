@@ -313,6 +313,12 @@ EXPORT void on_ers()
     //check air state
     if (!g_checkAirLockout && altitude > AIR_ALT && airspeed > AIR_SPD) {
         g_checkAirLockout = true;
+
+        g_lowAltLockout = false;
+        g_AttAndVSpeedLockout = false;
+        g_onERS2Lockout = false;
+        g_onERS3Lockout = false;
+
         m_air::publish(true);
         pump_stage = 1; //restart fuel algorithm after launch
         printf("VM:Start AIR\n");
@@ -331,8 +337,7 @@ EXPORT void on_ers()
     const bool is_rp = checkRollAndPitch();
     const bool is_vspd = checkVSpeed();
 
-    const bool ers = (m_air_val && !g_AttAndVSpeedLockout && (is_rp || is_vspd))
-                     || checkTakeOFFSafety();
+    const bool ers = (m_air_val && !g_AttAndVSpeedLockout && (is_rp || is_vspd)) || checkTakeOFFSafety();
 
     if (ers) {
         g_AttAndVSpeedLockout = true;
@@ -362,8 +367,7 @@ EXPORT void on_ers()
         //release parachute
         const bool lvs_release = checkVSpeedAndAltitudeRelease();
         const bool gmax_release = checkGForceRelease();
-        if (g_onERS2Lockout && !g_onERS3Lockout && (lvs_release || gmax_release)
-            && (altitude < ERS3_ALT)) {
+        if (g_onERS2Lockout && !g_onERS3Lockout && (lvs_release || gmax_release) && (altitude < ERS3_ALT)) {
             g_onERS3Lockout = true;
             m_ers3::publish(true);
             printf("VM:ERS3 ok\n");
