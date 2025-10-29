@@ -21,12 +21,6 @@ using m_sw7 = Mandala<mandala::ctr::env::sw::sw7>;
 
 using m_sns_temp = Mandala<mandala::sns::nav::gyro::temp>; //gyro temp
 
-//get
-using m_s1 = Mandala<mandala::sns::env::scr::s1>;
-
-//set
-using m_temp = Mandala<mandala::est::env::usrc::c7>;
-
 using m_ltt = Mandala<mandala::est::env::sys::ltt>;
 using m_health = Mandala<mandala::est::env::sys::health>;
 
@@ -48,8 +42,6 @@ int main()
 
     m_status_heater();
 
-    m_s1();
-
     m_sns_temp();
 
     m_sw_manual();
@@ -67,8 +59,6 @@ int main()
 
 EXPORT void on_main()
 {
-    m_temp::publish(m_s1::value() + 100);
-
     uint32_t status = ((uint32_t) m_sw1::value() << 0) | ((uint32_t) m_sw2::value() << 1)
                       | ((uint32_t) m_sw3::value() << 2) | ((uint32_t) m_sw4::value() << 3)
                       | ((uint32_t) m_sw5::value() << 4) | ((uint32_t) m_sw6::value() << 5)
