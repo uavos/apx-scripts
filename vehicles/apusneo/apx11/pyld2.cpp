@@ -11,7 +11,6 @@ constexpr const port_id_t PORT_ID_GCU{40};
 constexpr const port_id_t PORT_ID_AGL{5};
 
 constexpr const uint16_t TASK_MAIN_MS{100};
-constexpr const uint16_t TASK_HEATER_MS{2000}; //0.5Hz
 
 #pragma pack(1)
 typedef struct
@@ -39,10 +38,9 @@ struct PYLD_2_DATA
 
 PYLD_2_DATA _pyld = {};
 
-constexpr const float ANT_MULT{1.25f};
+constexpr const float ANT_MULT{-0.6f};
 constexpr const float ANT_OFFSET{0.f};
 
-enum class HeaterType { CAM1, CAM2, LENS, COMP };
 bool auto_heat_state{1};
 
 //get
@@ -53,7 +51,7 @@ using m_lens = Mandala<mandala::sns::env::scr::s4>;
 using m_cam2 = Mandala<mandala::sns::env::scr::s5>;
 using m_comp = Mandala<mandala::sns::env::scr::s6>;
 using m_base_cam = Mandala<mandala::sns::env::scr::s7>;
-using m_swmf1 = Mandala<mandala::sns::env::scr::s8>;
+//using m_swmf1 = Mandala<mandala::sns::env::scr::s8>;
 
 using m_s10 = Mandala<mandala::sns::env::scr::s10>; //srv pos
 using m_s11 = Mandala<mandala::sns::env::scr::s11>; //srv temp
@@ -63,6 +61,7 @@ using m_cam1_h = Mandala<mandala::est::env::usrb::b10>; //cam1 heater
 using m_cam2_h = Mandala<mandala::est::env::usrb::b11>; //cam2 heater
 using m_lens_h = Mandala<mandala::est::env::usrb::b12>; //lens heater
 using m_comp_h = Mandala<mandala::est::env::usrb::b13>; //comp heater
+
 //AGL
 using m_agl = Mandala<mandala::sns::nav::agl::laser>; //agl
 
@@ -78,6 +77,7 @@ int main()
     m_cam2();
     m_comp();
     m_base_cam();
+    //m_swmf1();
 
     m_s10();
     m_s11();
@@ -89,8 +89,9 @@ int main()
     _pyld.header[3] = MSG7_ID;
 
     schedule_periodic(task("on_main"), TASK_MAIN_MS);
-    schedule_periodic(task("on_heater"), TASK_HEATER_MS);
     receive(PORT_ID_AGL, "aglHandler");
+
+    task("pld2_heat"); // 0/1
 
     printf("%s Script ready...\n", txt_dev);
 
@@ -128,7 +129,7 @@ void send_pyld2_telemetry()
     _pyld.temp_lens = (int8_t) m_lens::value();
     _pyld.temp_comp = (int8_t) m_comp::value();
     _pyld.temp_base_cam = (int8_t) m_base_cam::value();
-    _pyld.temp_swmf1 = (int8_t) m_swmf1::value();
+    //_pyld.temp_swmf1 = (int8_t) m_swmf1::value();
 
     int32_t ant_pos = int32_t(m_s10::value() * ANT_MULT + ANT_OFFSET);
 
@@ -141,6 +142,36 @@ void send_pyld2_telemetry()
     send(PORT_ID_GCU, &_pyld.header, sizeof(PYLD_2_DATA), true);
 }
 
+bool heater(int8_t temp, int8_t threshold_on, int8_t threshold_off)
+{
+    if (temp < threshold_on)
+        return true;
+
+    if (temp > threshold_off)
+        return false;
+
+    return false;
+}
+
+EXPORT void on_heater()
+{
+    if (auto_heat_state == 0) {
+        return;
+    }
+
+    bool state = heater((int8_t) m_cam1::value(), -20, -10);
+    m_cam1_h::publish(state);
+
+    state = heater((int8_t) ((m_cam2::value() + m_cam2_pc::value()) * 0.5f), -10, 0);
+    m_cam2_h::publish(state);
+
+    state = heater((int8_t) m_lens::value(), -15, -5);
+    m_lens_h::publish(state);
+
+    state = heater((int8_t) m_comp::value(), -20, -10);
+    m_comp_h::publish(state);
+}
+
 EXPORT void on_main()
 {
     //agl
@@ -150,9 +181,8 @@ EXPORT void on_main()
     if (now - pyld2_tlm_timer > SCHEDULE_PYLD2_TIMEOUT) {
         pyld2_tlm_timer = now;
         send_pyld2_telemetry();
+        on_heater();
     }
-
-    task("auto_heat"); // 0/1
 }
 
 //ASCII:ld,0:-0.66
@@ -192,49 +222,8 @@ EXPORT void aglHandler(const uint8_t *data, size_t size)
     }
 }
 
-void heater(int8_t temp, int8_t threshold_on, int8_t threshold_off, HeaterType type)
-{
-    bool state = false;
-
-    if (temp < threshold_on) {
-        state = true;
-
-    } else if (temp > threshold_off) {
-        state = false;
-    } else
-        return; //no change
-
-    switch (type) {
-    case HeaterType::CAM1:
-        m_cam1_h::publish(state);
-        break;
-    case HeaterType::CAM2:
-        m_cam2_h::publish(state);
-        break;
-    case HeaterType::LENS:
-        m_lens_h::publish(state);
-        break;
-    case HeaterType::COMP:
-        m_comp_h::publish(state);
-        break;
-    }
-
-    return;
-}
-
-EXPORT void on_heater()
-{
-    if (auto_heat_state == 0) {
-        return;
-    }
-
-    heater((int8_t) m_cam1::value(), -20, -15, HeaterType::CAM1);
-    heater((int8_t) ((m_cam2::value() + m_cam2_pc::value()) * 0.5), -10, -5, HeaterType::CAM2);
-    heater((int8_t) m_lens::value(), -15, -10, HeaterType::LENS);
-    heater((int8_t) m_comp::value(), -20, -15, HeaterType::COMP);
-}
-
-EXPORT void auto_heat(int32_t val)
+EXPORT void pld2_heat(int32_t val)
 {
     auto_heat_state = (bool) val;
+    printf("pld2_heat:%u\n", auto_heat_state);
 }
