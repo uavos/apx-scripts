@@ -38,7 +38,7 @@ struct PYLD_2_DATA
 
 PYLD_2_DATA _pyld = {};
 
-constexpr const float ANT_MULT{-0.6f};
+constexpr const float ANT_MULT{-1.0f};
 constexpr const float ANT_OFFSET{0.f};
 
 bool auto_heat_state{1};
@@ -135,6 +135,8 @@ void send_pyld2_telemetry()
 
     _pyld.srv_antenna.pos = (int8_t) limit(ant_pos, 0, 100);
     _pyld.srv_antenna.temp = (int8_t) m_s11::value();
+
+    printf("agl:%u", _pyld.srv_antenna.pos);
 
     //crc
     _pyld.crc = calcTelemetryCRC(&_pyld.header[0], sizeof(PYLD_2_DATA) - 1);
