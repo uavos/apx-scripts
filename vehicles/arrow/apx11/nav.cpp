@@ -306,6 +306,10 @@ bool checkGForceRelease()
 
 EXPORT void on_ers()
 {
+    if ((uint32_t) m_mode::value() == mandala::proc_mode_TAXI) {
+        return;
+    }
+
     const float altitude = (float) m_altitude::value();
     const float airspeed = (float) m_airspeed::value();
     const bool ers1 = (bool) m_ers1::value();
