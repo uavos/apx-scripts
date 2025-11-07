@@ -478,7 +478,7 @@ void turn_on_pump_3()
 
 void pump_stage_1() //get fuel from tank 3 until the point
 {
-    if (fuel[0].percent > TANK_3_POINT) {
+    if (fuel[2].percent > TANK_3_POINT) {
         turn_on_pump_3();
     } else {
         pump_stage = 2;
