@@ -12,9 +12,9 @@ const uint16_t TASK_ERS_MS{100};  //msec
 const uint16_t TASK_FUEL_MS{500}; //msec
 
 //FUEL
-const uint8_t ADR_FUEL_SENS1{75};
-const uint8_t ADR_FUEL_SENS2{76};
-const uint8_t ADR_FUEL_SENS3{77};
+const uint8_t ADR_FUEL_SENS1{75}; //85
+const uint8_t ADR_FUEL_SENS2{76}; //86
+const uint8_t ADR_FUEL_SENS3{77}; //87
 
 const uint8_t MSG_FUEL_SIZE{9}; //FUEL
 
