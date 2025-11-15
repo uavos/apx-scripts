@@ -310,6 +310,10 @@ EXPORT void on_ers()
         return;
     }
 
+    if ((uint32_t) m_mode::value() == mandala::proc_mode_UAV) {
+        return;
+    }
+
     const float altitude = (float) m_altitude::value();
     const float airspeed = (float) m_airspeed::value();
     const bool ers1 = (bool) m_ers1::value();
@@ -332,8 +336,8 @@ EXPORT void on_ers()
     if (g_checkAirLockout && !g_lowAltLockout && altitude < ERS2_ALT) {
         g_lowAltLockout = true;
         g_onERS = true;
-        WAIT_TIME = 100;
-        m_ers1::publish(1u);
+        WAIT_TIME = 2500;
+        m_ers1::publish(true);
         printf("VM:Low alt. ERS on\n");
     }
 
