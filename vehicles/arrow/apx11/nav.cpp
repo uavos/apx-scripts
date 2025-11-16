@@ -3,7 +3,7 @@
 
 #include <apx.h>
 
-//#define EQUAL_TANKS
+#define EQUAL_TANKS
 
 static constexpr const port_id_t port_fuel_id{11};
 
@@ -12,9 +12,9 @@ const uint16_t TASK_ERS_MS{100};  //msec
 const uint16_t TASK_FUEL_MS{500}; //msec
 
 //FUEL
-const uint8_t ADR_FUEL_SENS1{75}; //85
-const uint8_t ADR_FUEL_SENS2{76}; //86
-const uint8_t ADR_FUEL_SENS3{77}; //87
+const uint8_t ADR_FUEL_SENS1{85}; //75
+const uint8_t ADR_FUEL_SENS2{86}; //76
+const uint8_t ADR_FUEL_SENS3{87}; //77
 
 const uint8_t MSG_FUEL_SIZE{9}; //FUEL
 
@@ -104,6 +104,7 @@ using m_ltt = Mandala<mandala::est::env::sys::ltt>;
 using m_health = Mandala<mandala::est::env::sys::health>;
 using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
 using m_stage = Mandala<mandala::cmd::nav::proc::stage>;
+using m_geo_safety = Mandala<mandala::est::nav::geo::safe>;
 
 //ers
 using m_ers1 = Mandala<mandala::ctr::env::ers::launch>;
@@ -182,6 +183,7 @@ int main()
     m_health();
     m_mode();
     m_stage();
+    m_geo_safety();
 
     //ers
     m_ers1();
@@ -227,6 +229,13 @@ EXPORT void on_main()
     if ((uint32_t) m_health::value() == mandala::sys_health_warning
         && (uint32_t) m_mode::value() != mandala::proc_mode_TAXI) {
         m_mode::publish((uint32_t) mandala::proc_mode_LANDING);
+    }
+
+    //geofence
+    if ((uint32_t) m_geo_safety::value() == mandala::geo_safe_critical
+        && (uint32_t) m_mode::value() != (uint32_t) mandala::proc_mode_LANDING) {
+        m_mode::publish((uint32_t) mandala::proc_mode_LANDING);
+        printf("VM:Geofence critical\n");
     }
 }
 
@@ -310,7 +319,7 @@ EXPORT void on_ers()
         return;
     }
 
-    if ((uint32_t) m_mode::value() == mandala::proc_mode_UAV) {
+    if ((uint32_t) m_mode::value() == mandala::proc_mode_UAV && (uint32_t) m_stage::value() == 2) {
         return;
     }
 
