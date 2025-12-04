@@ -46,6 +46,8 @@ int main()
 
     m_sw_manual();
 
+    m_mode();
+
     m_ltt();
     m_health();
 
