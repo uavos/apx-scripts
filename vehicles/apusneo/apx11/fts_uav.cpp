@@ -14,13 +14,16 @@ static constexpr const uint8_t FTS_DATA_SIZE{16};
 uint32_t g_timePoint = 0;
 int g_lte_step = 0;
 bool g_lte_configured = false;
+bool g_connack_ok = false;
+bool g_connect_ok = false;
+bool g_suback_ok = false;
 
-constexpr uint32_t LTE_DELAY_MS = 3000; // 3 сек
+constexpr uint32_t LTE_DELAY_MS = 7000;
 
 void send_cmd(const char *cmd)
 {
     send(LTE_port_id, cmd, strlen(cmd), true);
-    printf("SEND: %s", cmd);
+    //printf("SEND: %s", cmd);
 }
 
 void send_lte_message(const uint8_t *data, size_t size)
@@ -29,7 +32,6 @@ void send_lte_message(const uint8_t *data, size_t size)
     size_t p = 0;
     const char hex[] = "0123456789ABCDEF";
 
-    // Префикс команды
     const char prefix[] = "AT+MPUB=\"UzuF9gZvg\",2,0,\"";
     for (size_t i = 0; prefix[i] != 0; i++)
         cmd[p++] = prefix[i];
@@ -48,7 +50,7 @@ void send_lte_message(const uint8_t *data, size_t size)
     cmd[p] = 0;
 
     send(LTE_port_id, cmd, p, true);
-    printf("SEND: %s", cmd);
+    //printf("SEND: %s", cmd);
 }
 
 EXPORT void configure_LTE()
@@ -59,31 +61,46 @@ EXPORT void configure_LTE()
     if (now - g_timePoint < LTE_DELAY_MS || g_lte_configured)
         return;
 
+    g_lte_step++;
     switch (g_lte_step) {
-    case 0:
-        send_cmd("AT+MCONFIG=\"FlightModem\",\"f9aIrgWvR\",\"fraIrgZDgz\"\r\n");
-        break;
-
     case 1:
-        send_cmd("AT+MIPSTART=\"iot.dfrobot.com\",\"1883\"\r\n");
-        break;
-
+        send_cmd("AT\r\n");
+        break; //should answer OK
     case 2:
-        send_cmd("AT+MCONNECT=1,65535\r\n");
-        break;
+        send_cmd("AT+MCONFIG=\"FlightModem\",\"f9aIrgWvR\",\"fraIrgZDgz\"\r\n");
+        break; //should answer OK
 
     case 3:
-        send_cmd("AT+MSUB=\"p0Kq0dZvg\",0\r\n"); //QoS = 0
-        break;
+        send_cmd("AT+MIPSTART=\"iot.dfrobot.com\",\"1883\"\r\n");
+        break; //should answer OK, then CONNECT OK
 
     case 4:
-        printf("LTE init complete!\n");
-        g_lte_configured = true;
-        return; // завершили настройку
+        send_cmd("AT+MCONNECT=1,65535\r\n");
+        break; //should answer OK, then CONNAK OK
+
+    case 5:
+        send_cmd("AT+MSUB=\"p0Kq0dZvg\",0\r\n");
+        break; //should answer OK, then SUBACK
+
+    case 6: {
+        if (g_connack_ok && g_connect_ok && g_suback_ok) {
+            printf("LTE init complete!\n");
+            send_cmd("AT+MPUB=\"UzuF9gZvg\",2,0,\"UAV LTE connected\"\r\n");
+            g_lte_configured = true;
+            return;
+        } else {
+            printf("LTE init failed, retrying...\n");
+            send_cmd("AT+RESET\r\n");
+            g_connack_ok = false;
+            g_connect_ok = false;
+            g_suback_ok = false;
+            g_lte_step = 0;
+            break;
+        }
+    }
+        return;
     }
 
-    // переход к следующему шагу
-    g_lte_step++;
     g_timePoint = now;
 }
 
@@ -99,9 +116,36 @@ int main()
 
 EXPORT void on_rx_from_lte(const uint8_t *data, size_t size)
 {
+    if (size == 14) {
+        if (memcmp(&data[2], "CONNACK OK", 10) == 0) {
+            printf("CONNACK OK received");
+            g_connack_ok = true;
+            return;
+        }
+
+        if (memcmp(&data[2], "CONNECT OK", 10) == 0) {
+            printf("CONNECT OK received");
+            g_connect_ok = true;
+            return;
+        }
+    }
+
+    if (size == 10) {
+        if (memcmp(&data[2], "SUBACK", 6) == 0) {
+            printf("SUBACK OK received");
+            g_suback_ok = true;
+            return;
+        }
+    }
+
     if (size < FTS_DATA_SIZE * 2) {
-        printf("LTE: message too short\n");
+        //printf("LTE: message too short, size=%u", (unsigned) size);
         return;
+    }
+
+    if (memcmp(&data[2], "+MSUB:", 6) != 0) {
+        //printf("LTE: unexpected beginning of message\n");
+        return; // игнорируем чужие сообщения
     }
 
     char buffer[128];
@@ -111,28 +155,6 @@ EXPORT void on_rx_from_lte(const uint8_t *data, size_t size)
     for (size_t i = 0; i < len; i++)
         buffer[i] = data[i];
     buffer[len] = '\0';
-
-    const char expected[] = "+MSUB:";
-    const size_t expected_len = 6; // длина строки выше
-
-    if (len < expected_len) {
-        printf("LTE: message less then expected\n");
-        return;
-    }
-
-    // проверяем начало строки
-    int match = 1;
-    for (size_t i = 0; i < expected_len; i++) {
-        if (buffer[i] != expected[i]) {
-            match = 0;
-            break;
-        }
-    }
-
-    //if (!match) {
-    //    printf("LTE: unexpected beginning of message\n");
-    //    return; // игнорируем чужие сообщения
-    //}
 
     // находим последнюю запятую
     size_t last_comma_index = 0;
@@ -145,7 +167,7 @@ EXPORT void on_rx_from_lte(const uint8_t *data, size_t size)
     }
 
     if (!found_comma) {
-        printf("LTE: неверный формат сообщения\n");
+        //printf("LTE: неверный формат сообщения\n");
         return;
     }
 
@@ -162,15 +184,15 @@ EXPORT void on_rx_from_lte(const uint8_t *data, size_t size)
 
     // ожидаем, что payload — текстовый HEX (длина чётная)
     if (payload_len < 2 || (payload_len % 2) != 0) {
-        printf("LTE: HEX payload invalid length: %u\n", (unsigned) payload_len);
+        //printf("LTE: HEX payload invalid length: %u\n", (unsigned) payload_len);
         return;
     }
 
-    printf("payload_len=%u\n", (unsigned) payload_len);
+    if (payload_len != 32)
+        return;
 
     size_t byte_count = payload_len / 2;
-    printf("byte_count=%u\n", (unsigned) byte_count);
-    uint8_t bin[64]; // 16 байт влезут, даже 32 — без проблем
+    uint8_t bin[64];
 
     for (size_t i = 0; i < byte_count; i++) {
         char hi = buffer[payload_start + i * 2];
@@ -212,7 +234,7 @@ EXPORT void on_rx_from_fts(const uint8_t *data, size_t size)
 
     // отправляем по LTE сразу после приёма
     if (!g_lte_configured) {
-        printf("LTE not configured yet\n");
+        //printf("LTE not configured yet\n");
         return;
     }
 
