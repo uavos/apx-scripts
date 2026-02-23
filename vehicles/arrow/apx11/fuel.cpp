@@ -206,17 +206,6 @@ void turn_on_pump_1()
 
 void turn_on_pump_2()
 {
-    /*if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
-        if ((bool) m_pump1::value() || (bool) m_pump3::value()) {
-            m_pump1::publish(false);
-            m_pump3::publish(false);
-            return;
-        }
-        if (!(bool) m_pump2::value()) {
-            m_pump2::publish(true);
-            startTimerPumpON = time_ms();
-        }
-    }*/
     m_pump2::publish(true);
 }
 
@@ -234,9 +223,9 @@ void turn_on_pump_3()
     }
 }
 
-void pump_stage_1()
-{
-    if (fuel[1].percent < 90.f) { //if tank 2 is below 90%, pump fuel
+void pump_stage_1() //keep tank 2 full, pumping from 1 and 3 according to required difference
+{                   // prioritize keeping more fuel in tank 1
+    if (fuel[1].percent < 95.f) { //if tank 2 is below 90%, pump fuel
 
         float avrg_t1t3 = (fuel[0].percent + fuel[2].percent) / 2.f;
         if (avrg_t1t3 > 50.f) {
@@ -256,9 +245,9 @@ void pump_stage_1()
     }
 }
 
-void pump_stage_2()
-{
-    if (fuel[1].percent < 90.f) { //if tank 2 is below 90%, pump fuel
+void pump_stage_2() //keep tank 2 full, pumping from 1 and 3 according to required difference
+{                   // prioritize keeping more fuel in tank 1
+    if (fuel[1].percent < 95.f) { //if tank 2 is below 90%, pump fuel
 
         float avrg_t1t3 = (fuel[0].percent + fuel[2].percent) / 2.f;
         if (avrg_t1t3 > 15.f) {
@@ -278,6 +267,43 @@ void pump_stage_2()
     }
 }
 
+void pump_stage_3() //leaving tank 1 with around 15%, pump from tank 3 until empty
+{
+    if (fuel[1].percent < 95.f) {             //if tank 2 is below 90%, pump fuel
+        if (fuel[2].percent > CRITICAL_LOW) { //if tank 3 has fuel, pump from it
+            turn_on_pump_3();
+        } else {
+            pump_stage = 4;
+            m_pump1::publish(false); //turn off pump 1
+            m_pump3::publish(false); //turn off pump 3
+        }
+    }
+}
+
+void pump_stage_4() //leaving tank 1 with around 15%, pump from tank 2 until ~40%
+{                   //pump 2 works when engine works, so no need to turn it on specifically
+    if (fuel[1].percent < 40.f) {
+        pump_stage = 5;
+    }
+}
+
+void pump_stage_5() // pump from tank 1 and tank 2 with specific ratio,
+{
+    if (fuel[1].percent > fuel[0].percent * 2) {
+        m_pump1::publish(false);
+    } else {
+        turn_on_pump_1();
+    }
+
+    if (fuel[0].percent < CRITICAL_LOW) {
+        m_pump1::publish(false);
+    };
+
+    if (fuel[1].percent < CRITICAL_LOW) {
+        m_pump2::publish(false);
+    }
+}
+
 void fuel_auto_control()
 {
     if (fuel[1].percent > CRITICAL_LOW) { //keep pump 2 on until critical low
@@ -292,10 +318,13 @@ void fuel_auto_control()
         pump_stage_2();
         break;
     case 3:
-        //pump_stage_3();
+        pump_stage_3();
         break;
     case 4:
-        //pump_stage_4();
+        pump_stage_4();
+        break;
+    case 5:
+        pump_stage_5();
         break;
     }
 }
