@@ -1,11 +1,16 @@
+// Script for fuel management in Arrow APX11
+// For system where engine takes fuel from tank 2, which is refilled from tanks 1 and 3
+
 #include <apx.h>
 
 #define EQUAL_TANKS
 
 #define FUEL_SIM
+#define SIM_SPEED 0.05f
 
 static constexpr const port_id_t port_fuel_id{11};
-const uint16_t TASK_FUEL_MS{500}; //msec
+const uint16_t TASK_FUEL_MS{500};    //msec
+const uint16_t TASK_FUEL_SIM_MS{50}; //msec
 
 //FUEL
 const uint8_t ADR_FUEL_SENS1{85}; //75
@@ -15,11 +20,11 @@ const uint8_t ADR_FUEL_SENS3{87}; //77
 const uint8_t MSG_FUEL_SIZE{9}; //FUEL
 
 #ifdef EQUAL_TANKS
-const float V_MAX1{16.7f}; //liters
-const float V_MAX2{16.7f}; //liters
-const float V_MAX3{16.7f}; //liters
+const float V_MAX1{100.0f}; //liters
+const float V_MAX2{100.0f}; //liters
+const float V_MAX3{100.0f}; //liters
 
-//const float CRITICAL_LOW{7.0f}; //7% = 1.1l
+const float CRITICAL_LOW{7.0f}; //7% = 1.1l
 //const float TANK_1_POINT{13.0f}; //13% = 2l
 //const float TANK_2_POINT{25.0f}; //25% = 3.9l
 //const float TANK_3_POINT{51.0f}; //51% = 8l
@@ -43,8 +48,13 @@ uint32_t startTimerPumpON;
 
 uint8_t pump_stage{1}; //default stage
 
-const uint8_t TIME_SA{5};     //sec
-const uint8_t DELAY_PUMP{15}; //sec between different pumps
+const uint8_t TIME_SA{5}; //sec
+
+#ifdef FUEL_SIM
+const uint8_t DELAY_PUMP{2}; //pump works for 2 sec before switching to another
+#else
+const uint8_t DELAY_PUMP{15}; //pump works for 15 sec before switching to another
+#endif
 
 bool fuel_mc_old{false};
 bool ignition_old{false};
@@ -100,9 +110,16 @@ using m_ers1 = Mandala<mandala::ctr::env::ers::launch>;
 
 int main()
 {
+#ifdef FUEL_SIM
+    fuel[0].set_percent(100.f);
+    fuel[1].set_percent(100.f);
+    fuel[2].set_percent(100.f);
+    schedule_periodic(task("on_fuel_sim"), TASK_FUEL_SIM_MS);
+#endif
+
     schedule_periodic(task("on_fuel"), TASK_FUEL_MS);
 
-    receive(port_fuel_id, "on_fuel_serial");
+    //receive(port_fuel_id, "on_fuel_serial");
 
     m_fuel_p();
     m_fuel_l();
@@ -120,6 +137,10 @@ int main()
     m_warn3();
 
     m_fuel_mc();
+
+    //ers
+    m_ers1();
+    m_pwr_eng();
 
     //uint32_t now = time_ms();
 
@@ -172,8 +193,7 @@ void turn_on_all_pumps()
 void turn_on_pump_1()
 {
     if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
-        if ((bool) m_pump2::value() || (bool) m_pump3::value()) {
-            m_pump2::publish(false);
+        if ((bool) m_pump3::value()) { //if pump 3 is on, turn it off before turning on pump 1
             m_pump3::publish(false);
             return;
         }
@@ -186,7 +206,7 @@ void turn_on_pump_1()
 
 void turn_on_pump_2()
 {
-    if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
+    /*if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
         if ((bool) m_pump1::value() || (bool) m_pump3::value()) {
             m_pump1::publish(false);
             m_pump3::publish(false);
@@ -196,15 +216,15 @@ void turn_on_pump_2()
             m_pump2::publish(true);
             startTimerPumpON = time_ms();
         }
-    }
+    }*/
+    m_pump2::publish(true);
 }
 
 void turn_on_pump_3()
 {
     if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
-        if ((bool) m_pump1::value() || (bool) m_pump2::value()) {
+        if ((bool) m_pump1::value()) { //if pump 1 is on, turn it off before turning on pump 3
             m_pump1::publish(false);
-            m_pump2::publish(false);
             return;
         }
         if (!(bool) m_pump3::value()) {
@@ -214,17 +234,62 @@ void turn_on_pump_3()
     }
 }
 
-void pump_stage_1() //get fuel from tank 3 until the point
-{}
+void pump_stage_1()
+{
+    if (fuel[1].percent < 90.f) { //if tank 2 is below 90%, pump fuel
+
+        float avrg_t1t3 = (fuel[0].percent + fuel[2].percent) / 2.f;
+        if (avrg_t1t3 > 50.f) {
+            float req_diff = -0.4f * avrg_t1t3 + 40.f; //linear function for req_diff
+            m_fuel_p::publish(req_diff);
+
+            //keep diff between tank 1 and 3 near required
+            if (fuel[0].percent - fuel[2].percent > req_diff) {
+                turn_on_pump_1();
+            } else {
+                turn_on_pump_3();
+            }
+
+        } else {
+            pump_stage = 2;
+        }
+    }
+}
+
+void pump_stage_2()
+{
+    if (fuel[1].percent < 90.f) { //if tank 2 is below 90%, pump fuel
+
+        float avrg_t1t3 = (fuel[0].percent + fuel[2].percent) / 2.f;
+        if (avrg_t1t3 > 15.f) {
+            float req_diff = 0.57f * avrg_t1t3 - 8.5f; //linear function for req_diff
+            m_fuel_p::publish(req_diff);
+
+            //keep diff between tank 1 and 3 near required
+            if (fuel[0].percent - fuel[2].percent > req_diff) {
+                turn_on_pump_1();
+            } else {
+                turn_on_pump_3();
+            }
+
+        } else {
+            pump_stage = 3;
+        }
+    }
+}
 
 void fuel_auto_control()
 {
+    if (fuel[1].percent > CRITICAL_LOW) { //keep pump 2 on until critical low
+        turn_on_pump_2();
+    }
+
     switch (pump_stage) {
     case 1:
         pump_stage_1();
         break;
     case 2:
-        //pump_stage_2();
+        pump_stage_2();
         break;
     case 3:
         //pump_stage_3();
@@ -253,7 +318,7 @@ EXPORT void on_fuel()
     m_fuel3::publish(fuel[2].liters);
 
     m_fuel_l::publish(fuel[0].liters + fuel[1].liters + fuel[2].liters);
-    m_fuel_p::publish((fuel[0].percent + fuel[1].percent + fuel[2].percent) / 3.f);
+    //m_fuel_p::publish((fuel[0].percent + fuel[1].percent + fuel[2].percent) / 3.f);
 
     const bool ignition = (bool) m_pwr_eng::value();
     const bool fuel_mc = (bool) m_fuel_mc::value();
@@ -295,6 +360,35 @@ EXPORT void on_fuel()
 
     snd_fuel_buf[3] = calcCRC(snd_fuel_buf, 3);
     send(port_fuel_id, snd_fuel_buf, 4, true);
+}
+
+EXPORT void on_fuel_sim()
+{
+    if ((bool) m_pump2::value()) { //simulate fuel flow from tank 2 to engine
+        if (fuel[1].percent > 0.f) {
+            fuel[1].set_percent(fuel[1].percent - SIM_SPEED);
+        } else {
+            fuel[1].set_percent(0.f);
+        }
+    }
+
+    if ((bool) m_pump1::value()) {
+        if (fuel[0].percent > 0.f) { //simulate fuel flow from tank 1 to tank 2
+            fuel[0].set_percent(fuel[0].percent - SIM_SPEED);
+            fuel[1].set_percent(fuel[1].percent + SIM_SPEED);
+        } else {
+            fuel[0].set_percent(0.f);
+        }
+    }
+
+    if ((bool) m_pump3::value()) {
+        if (fuel[2].percent > 0.f) { //simulate fuel flow from tank 3 to tank 2
+            fuel[2].set_percent(fuel[2].percent - SIM_SPEED);
+            fuel[1].set_percent(fuel[1].percent + SIM_SPEED);
+        } else {
+            fuel[2].set_percent(0.f);
+        }
+    }
 }
 
 EXPORT void on_fuel_serial(const uint8_t *data, size_t size)
