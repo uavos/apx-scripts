@@ -6,7 +6,7 @@
 #define EQUAL_TANKS
 
 #define FUEL_SIM
-#define SIM_SPEED 0.05f
+#define SIM_SPEED 0.03f
 
 static constexpr const port_id_t port_fuel_id{11};
 const uint16_t TASK_FUEL_MS{500};    //msec
@@ -26,8 +26,6 @@ const float V_MAX3{100.0f}; //liters
 
 const float CRITICAL_LOW{7.0f};    //% reaching this level considered empty tank
 const float TANK_2_KEEPFULL{95.f}; //% if below, start pumping fuel in tank 2
-const float TANK_13_MAXDIFF{50.f}; //% point of average vol. between 1 & 3 when max diff should occur
-const float TANK_13_ZERODIFF{15.f}; //% point of average vol. between 1 & 3 when diff should be zero
 //const float TANK_1_POINT{13.0f}; //13% = 2l
 //const float TANK_2_POINT{25.0f}; //25% = 3.9l
 //const float TANK_3_POINT{51.0f}; //51% = 8l
@@ -54,8 +52,8 @@ uint8_t pump_stage{1}; //default stage
 const uint8_t TIME_SA{5}; //sec. waiting time for answer from fuel sensors, after which warning is on
 
 #ifdef FUEL_SIM
-const uint8_t DELAY_PUMP{2};     //pump works for 2 sec before switching to another
-const uint8_t TIME_TO_EMPTY{10}; //sec. Time to drain tank from critical to empty level
+const uint8_t DELAY_PUMP{4};     //pump works for 4 sec before switching to another
+const uint8_t TIME_TO_EMPTY{20}; //sec. Time to drain tank from critical to empty level
 #else
 const uint8_t DELAY_PUMP{15};    //pump works for 15 sec before switching to another
 const uint8_t TIME_TO_EMPTY{60}; //sec. Time to drain tank from critical to empty level
@@ -269,7 +267,7 @@ void pump_stage_1() //keep tank 2 full, pumping from 1 and 3 according to requir
             }
         }
     } else {
-        turn_off_pump_1(); //turn off pump 1 when tank 2 is full
+        turn_off_pump_1(); //does this prevent pumps from working for 15 sec???
         turn_off_pump_3();
     }
 }
@@ -324,7 +322,6 @@ void pump_stage_4() // pump from tank 1 and tank 2 with specific ratio
             startTimerPumpON = time_ms();
         }
     } else if (time_ms() > startTimerPumpON + TIME_TO_EMPTY * 1000) {
-        printf("no fuel left");
         turn_off_pump_1();
     }
 }
@@ -414,28 +411,28 @@ EXPORT void on_fuel()
 EXPORT void on_fuel_sim()
 {
     if ((bool) m_pump2::value()) { //simulate fuel flow from tank 2 to engine
-        if (fuel[1].percent > 0.f) {
-            fuel[1].set_percent(fuel[1].percent - SIM_SPEED);
+        if (fuel[1].percent > 3.f) {
+            fuel[1].set_percent(fuel[1].percent - SIM_SPEED * 0.95f);
         } else {
-            fuel[1].set_percent(0.f);
+            fuel[1].set_percent(3.f);
         }
     }
 
     if ((bool) m_pump1::value()) {
-        if (fuel[0].percent > 0.f) { //simulate fuel flow from tank 1 to tank 2
+        if (fuel[0].percent > 3.f) { //simulate fuel flow from tank 1 to tank 2
             fuel[0].set_percent(fuel[0].percent - SIM_SPEED);
             fuel[1].set_percent(fuel[1].percent + SIM_SPEED);
         } else {
-            fuel[0].set_percent(0.f);
+            fuel[0].set_percent(3.f);
         }
     }
 
     if ((bool) m_pump3::value()) {
-        if (fuel[2].percent > 0.f) { //simulate fuel flow from tank 3 to tank 2
+        if (fuel[2].percent > 3.f) { //simulate fuel flow from tank 3 to tank 2
             fuel[2].set_percent(fuel[2].percent - SIM_SPEED);
             fuel[1].set_percent(fuel[1].percent + SIM_SPEED);
         } else {
-            fuel[2].set_percent(0.f);
+            fuel[2].set_percent(3.f);
         }
     }
 }
