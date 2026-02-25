@@ -5,12 +5,14 @@
 
 #define EQUAL_TANKS
 
-#define FUEL_SIM
-#define SIM_SPEED 0.03f
+//#define FUEL_SIM
+#define SIM_SPEED 0.02f
 
 static constexpr const port_id_t port_fuel_id{11};
-const uint16_t TASK_FUEL_MS{500};    //msec
+const uint16_t TASK_FUEL_MS{500}; //msec
+#ifdef FUEL_SIM
 const uint16_t TASK_FUEL_SIM_MS{50}; //msec
+#endif
 
 //FUEL
 const uint8_t ADR_FUEL_SENS1{85}; //75
@@ -406,6 +408,7 @@ EXPORT void on_fuel()
     send(port_fuel_id, snd_fuel_buf, 4, true);
 }
 
+#ifdef FUEL_SIM
 EXPORT void on_fuel_sim()
 {
     if ((bool) m_pump2::value()) { //simulate fuel flow from tank 2 to engine
@@ -434,6 +437,7 @@ EXPORT void on_fuel_sim()
         }
     }
 }
+#endif
 
 EXPORT void on_fuel_serial(const uint8_t *data, size_t size)
 {
