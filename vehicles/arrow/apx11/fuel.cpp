@@ -23,22 +23,23 @@ const uint8_t MSG_FUEL_SIZE{9}; //FUEL
 const float V_MAX1{100.0f}; //liters
 const float V_MAX2{100.0f}; //liters
 const float V_MAX3{100.0f}; //liters
-
-const float CRITICAL_LOW{7.0f};    //% reaching this level considered empty tank
-const float TANK_2_KEEPFULL{95.f}; //% if below, start pumping fuel in tank 2
-//const float TANK_1_POINT{13.0f}; //13% = 2l
-//const float TANK_2_POINT{25.0f}; //25% = 3.9l
-//const float TANK_3_POINT{51.0f}; //51% = 8l
-#else
-const float V_MAX1{17.0f}; //liters
-const float V_MAX2{18.3f}; //liters
-const float V_MAX3{24.6f}; //liters
-
-const float CRITICAL_LOW{7.0f};  //7% = 1.1l
-const float TANK_1_POINT{20.0f}; //20% = 3.4l
-const float TANK_2_POINT{25.0f}; //25% = 4.5l
-const float TANK_3_POINT{60.0f}; //60% = 14.7l
 #endif
+
+const float CRITICAL_LOW{7.0f};            //%, reaching this level considered empty tank
+const float TANK_2_KEEPFULL{95.f};         //%, if below, start pumping fuel in tank 2
+const float TANK_2_POINT{35.f};            //%, starting next stage when reaching this point
+const float TANK_12_RATIO{2.f};            //ratio of fuel to keep between tank 1 and 2
+const float TANK_13_MAX_DIFF{20.f};        //%, max allowed difference between tank 1 and 3 levels
+const float TANK_13_MIN_DIFF{0.0f};        //%, min required difference between tank 1 and 3 levels
+const float TANK_13_MAX_DIFF_LEVELS{50.f}; //%, max difference between tank 1 and 3 at 50% level
+const float TANK_13_MIN_DIFF_LEVELS{15.f}; //%, min difference between tank 1 and 3 at 15% level
+
+const float k1 = (TANK_13_MAX_DIFF - TANK_13_MIN_DIFF) / (TANK_13_MAX_DIFF_LEVELS - 100.f);
+const float b1 = TANK_13_MIN_DIFF - k1 * 100.f;
+
+const float k2 = (TANK_13_MIN_DIFF - TANK_13_MAX_DIFF)
+                 / (TANK_13_MIN_DIFF_LEVELS - TANK_13_MAX_DIFF_LEVELS);
+const float b2 = TANK_13_MAX_DIFF - k2 * TANK_13_MAX_DIFF_LEVELS;
 
 uint8_t snd_fuel_buf[MSG_FUEL_SIZE] = {};
 
@@ -147,8 +148,6 @@ int main()
     m_ers1();
     m_pwr_eng();
 
-    //uint32_t now = time_ms();
-
     return 0;
 }
 
@@ -246,10 +245,10 @@ void pump_stage_1() //keep tank 2 full, pumping from 1 and 3 according to requir
         float req_diff = 0.0f;
         bool valid = true;
 
-        if (avrg_t1t3 > 50.f) {
-            req_diff = -0.4f * avrg_t1t3 + 40.f; //linear function with points (50,20) and (100,0)
-        } else if (avrg_t1t3 > 15.f) {
-            req_diff = 0.57f * avrg_t1t3 - 8.5f; //linear function with points (15,0) and (50,20)
+        if (avrg_t1t3 > TANK_13_MAX_DIFF_LEVELS) {
+            req_diff = k1 * avrg_t1t3 + b1;
+        } else if (avrg_t1t3 > TANK_13_MIN_DIFF_LEVELS) {
+            req_diff = k2 * avrg_t1t3 + b2;
         } else {
             valid = false;
             pump_stage = 2; //if both 1 and 3 tanks are near 15%
@@ -258,7 +257,6 @@ void pump_stage_1() //keep tank 2 full, pumping from 1 and 3 according to requir
         }
 
         if (valid) {
-            m_fuel_p::publish(req_diff);
             //keep required difference between tank 1 and 3
             if (fuel[0].percent - fuel[2].percent > req_diff) {
                 turn_on_pump_1();
@@ -299,7 +297,7 @@ void pump_stage_2() //leaving tank 1 with around 15%, pump from tank 3 until emp
 
 void pump_stage_3() //leaving tank 1 with around 15%, pump from tank 2 until ~35%
 {                   //pump 2 works when engine works, so no need to turn it on specifically
-    if (fuel[1].percent < 35.f) {
+    if (fuel[1].percent < TANK_2_POINT) {
         pump_stage = 4;
         printf("fuel stage: 4");
     }
@@ -308,7 +306,7 @@ void pump_stage_3() //leaving tank 1 with around 15%, pump from tank 2 until ~35
 void pump_stage_4() // pump from tank 1 and tank 2 with specific ratio
 {
     if (!tank1_critical) {
-        if (fuel[1].percent > fuel[0].percent * 2) {
+        if (fuel[1].percent > fuel[0].percent * TANK_12_RATIO) {
             turn_off_pump_1();
         } else {
             turn_on_pump_1();
@@ -364,7 +362,7 @@ EXPORT void on_fuel()
     m_fuel3::publish(fuel[2].liters);
 
     m_fuel_l::publish(fuel[0].liters + fuel[1].liters + fuel[2].liters);
-    //m_fuel_p::publish((fuel[0].percent + fuel[1].percent + fuel[2].percent) / 3.f);
+    m_fuel_p::publish((fuel[0].percent + fuel[1].percent + fuel[2].percent) / 3.f);
 
     const bool ignition = (bool) m_pwr_eng::value();
     const bool fuel_mc = (bool) m_fuel_mc::value();
