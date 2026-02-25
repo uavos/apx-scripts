@@ -21,10 +21,14 @@ const uint8_t ADR_FUEL_SENS3{87}; //77
 
 const uint8_t MSG_FUEL_SIZE{9}; //FUEL
 
-#ifdef EQUAL_TANKS
-const float V_MAX1{100.0f}; //liters
-const float V_MAX2{100.0f}; //liters
-const float V_MAX3{100.0f}; //liters
+#ifdef FUEL_SIM
+const float V_MAX1{100.f}; //liters
+const float V_MAX2{100.f}; //liters
+const float V_MAX3{100.f}; //liters
+#else
+const float V_MAX1{16.7f}; //liters
+const float V_MAX2{16.7f}; //liters
+const float V_MAX3{16.7f}; //liters
 #endif
 
 const float CRITICAL_LOW{7.0f};            //%, reaching this level considered empty tank
