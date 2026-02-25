@@ -297,9 +297,9 @@ void pump_stage_2() //leaving tank 1 with around 15%, pump from tank 3 until emp
     }
 }
 
-void pump_stage_3() //leaving tank 1 with around 15%, pump from tank 2 until ~40%
+void pump_stage_3() //leaving tank 1 with around 15%, pump from tank 2 until ~35%
 {                   //pump 2 works when engine works, so no need to turn it on specifically
-    if (fuel[1].percent < 40.f) {
+    if (fuel[1].percent < 35.f) {
         pump_stage = 4;
         printf("fuel stage: 4");
     }
