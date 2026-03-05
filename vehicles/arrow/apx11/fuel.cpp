@@ -131,7 +131,7 @@ int main()
     printf("fuel stage: 1");
     schedule_periodic(task("on_fuel"), TASK_FUEL_MS);
 
-    //receive(port_fuel_id, "on_fuel_serial");
+    receive(port_fuel_id, "on_fuel_serial");
 
     m_fuel_p();
     m_fuel_l();
