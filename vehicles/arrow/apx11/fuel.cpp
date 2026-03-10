@@ -115,6 +115,10 @@ using m_warn1 = Mandala<mandala::est::env::usrb::b5>;
 using m_warn2 = Mandala<mandala::est::env::usrb::b6>;
 using m_warn3 = Mandala<mandala::est::env::usrb::b7>;
 
+using m_error1 = Mandala<mandala::est::env::usrc::c5>;
+using m_error2 = Mandala<mandala::est::env::usrc::c6>;
+using m_error3 = Mandala<mandala::est::env::usrc::c7>;
+
 using m_fuel_mc = Mandala<mandala::ctr::env::sw::sw8>; //manual control
 
 //ers
@@ -147,6 +151,10 @@ int main()
     m_warn1();
     m_warn2();
     m_warn3();
+
+    m_error1();
+    m_error2();
+    m_error3();
 
     m_fuel_mc();
 
@@ -457,6 +465,20 @@ EXPORT void on_fuel_serial(const uint8_t *data, size_t size)
     if (data[8] != calcCRC(data, 8)) {
         return;
     }
+
+    uint32_t error = data[3];
+    if (error < 150) //error codes start from 150
+        error = 0;
+
+        if (data[1] == ADR_FUEL[0]) {
+            m_error1::publish(error);
+        } else if (data[1] == ADR_FUEL[1]) {
+            m_error2::publish(error);
+        } else if (data[1] == ADR_FUEL[2]) {
+            m_error3::publish(error);
+        }
+    if (error >= 150) //do not publish fuel level if error
+        return;
 
     float fuel_percent = (float) (data[4] | (data[5] << 8)) / 10.f;
 
