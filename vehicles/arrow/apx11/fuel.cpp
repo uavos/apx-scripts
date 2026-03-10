@@ -470,23 +470,16 @@ EXPORT void on_fuel_serial(const uint8_t *data, size_t size)
     if (error < 150) //error codes start from 150
         error = 0;
 
-        if (data[1] == ADR_FUEL[0]) {
-            m_error1::publish(error);
-        } else if (data[1] == ADR_FUEL[1]) {
-            m_error2::publish(error);
-        } else if (data[1] == ADR_FUEL[2]) {
-            m_error3::publish(error);
-        }
-    if (error >= 150) //do not publish fuel level if error
-        return;
-
     float fuel_percent = (float) (data[4] | (data[5] << 8)) / 10.f;
 
     if (data[1] == ADR_FUEL[0]) {
         fuel[0].set_percent(fuel_percent);
+        m_error1::publish(error);
     } else if (data[1] == ADR_FUEL[1]) {
         fuel[1].set_percent(fuel_percent);
+        m_error2::publish(error);
     } else if (data[1] == ADR_FUEL[2]) {
         fuel[2].set_percent(fuel_percent);
+        m_error3::publish(error);
     }
 }
