@@ -33,15 +33,15 @@ const float V_MAX3{16.7f}; //liters
 
 const float CRITICAL_LOW{7.0f};            //%, reaching this level considered empty tank
 const float TANK_2_KEEPFULL{95.f};         //%, if below, start pumping fuel in tank 2
-const float TANK_2_POINT{35.f};            //%, starting next stage when reaching this point
+const float TANK_2_POINT{45.f};            //%, starting next stage when reaching this point
 const float TANK_12_RATIO{2.f};            //ratio of fuel to keep between tank 1 and 2
 const float TANK_13_MAX_DIFF{20.f};        //%, max allowed difference between tank 1 and 3 levels
-const float TANK_13_MIN_DIFF{0.0f};        //%, min required difference between tank 1 and 3 levels
-const float TANK_13_MAX_DIFF_LEVELS{50.f}; //%, max difference between tank 1 and 3 at 50% level
-const float TANK_13_MIN_DIFF_LEVELS{15.f}; //%, min difference between tank 1 and 3 at 15% level
+const float TANK_13_MIN_DIFF{10.0f};       //%, min required difference between tank 1 and 3 levels
+const float TANK_13_MAX_DIFF_LEVELS{50.f}; //%, max diff between tank 1 and 3 at 50% average level
+const float TANK_13_MIN_DIFF_LEVELS{20.f}; //%, min diff between tank 1 and 3 at 20% average level
 
-const float k1 = (TANK_13_MAX_DIFF - TANK_13_MIN_DIFF) / (TANK_13_MAX_DIFF_LEVELS - 100.f);
-const float b1 = TANK_13_MIN_DIFF - k1 * 100.f;
+const float k1 = (TANK_13_MAX_DIFF - 0.f) / (TANK_13_MAX_DIFF_LEVELS - 100.f); //0 is a start diff
+const float b1 = 0.f - k1 * 100.f;
 
 const float k2 = (TANK_13_MIN_DIFF - TANK_13_MAX_DIFF)
                  / (TANK_13_MIN_DIFF_LEVELS - TANK_13_MAX_DIFF_LEVELS);
@@ -309,7 +309,7 @@ void pump_stage_2() //leaving tank 1 with around 15%, pump from tank 3 until emp
     }
 }
 
-void pump_stage_3() //leaving tank 1 with around 15%, pump from tank 2 until ~35%
+void pump_stage_3() //leaving tank 1 with around 25%, pump from tank 2 until ~45%
 {                   //pump 2 works when engine works, so no need to turn it on specifically
     if (fuel[1].percent < TANK_2_POINT) {
         pump_stage = 4;
