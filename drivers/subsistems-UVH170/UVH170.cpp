@@ -1,6 +1,6 @@
 #include <apx.h>
 
-const uint8_t PORT_ID_ECU{60};
+const uint8_t PORT_ID{60};
 const uint8_t CAN_PACK_SIZE{13};
 const uint8_t TASK_ECU_MS{200};
 
@@ -19,7 +19,7 @@ using m_egt_4 = Mandala<mandala::est::env::usr::u7>;
 int main()
 {
     schedule_periodic(task("on_ecu"), TASK_ECU_MS);
-    receive(PORT_ID_ECU, "on_ecu_serial");
+    receive(PORT_ID, "on_serial");
 }
 
 void setThrottleMS()
@@ -35,7 +35,7 @@ void setThrottleMS()
     //printf("thr:%f/n", ch_throttle);
     memcpy(&data[5], &ch_throttle, 4);
     data[9] = 1;
-    send(PORT_ID_ECU, data, 10, false);
+    send(PORT_ID, data, 10, false);
 }
 
 EXPORT void on_ecu()
@@ -45,19 +45,16 @@ EXPORT void on_ecu()
     //Calc LAMBDA
 }
 
-EXPORT void on_ecu_serial(const uint8_t *data, size_t size)
+EXPORT void on_serial(const uint8_t *data, size_t size)
 {
-    printf("%d", size);
-
-    if ((size > CAN_PACK_SIZE) || (size != (data[4] & 0x7F) + 5)) {
-        return;
-    }
+    //printf("%d", size);
 
     uint32_t can_id = (uint32_t) (data[0] + (data[1] << 8) + (data[2] << 16) + (data[3] << 24));
-    //printf("can_id:%x\n", can_id);
+    //printf("can_id:%d\n", can_id);
 
     switch (can_id) {
     case CAN_BASE_ADDR + 2: {
+        //printf("temps");
         float param;
         int16_t raw;
 
@@ -73,6 +70,7 @@ EXPORT void on_ecu_serial(const uint8_t *data, size_t size)
     }
 
     case CAN_BASE_ADDR + 15: {
+        //printf("oil pressure");
         int16_t raw = (int16_t) (data[5] << 8) | data[6]; // raw param
         float param = float(raw);
 
@@ -82,6 +80,7 @@ EXPORT void on_ecu_serial(const uint8_t *data, size_t size)
     }
 
     case CAN_BASE_ADDR + 22: {
+        //printf("egt");
         float egt[4];
         for (uint8_t i = 0; i < 4; i++) {
             uint8_t idx = i * 2 + 5;
