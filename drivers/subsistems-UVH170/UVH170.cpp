@@ -35,7 +35,7 @@ using m_uvhpy_status = Mandala<mandala::est::env::usrc::c4>;
 using m_uvhpy_ibat_filt = Mandala<mandala::est::env::usrf::f1>;
 
 // AGL
-//using m_agl = Mandala<mandala::est::env::usr::u9>;
+using m_agl = Mandala<mandala::est::env::usr::u9>;
 
 //VESC
 //-------------------------------------------------------------------------------------
@@ -130,7 +130,7 @@ UVHPU _uvhpu{};
 
 // AGL
 //-------------------------------------------------------------------------------------
-//#define AGL_CAN_ID 0x00090002
+#define AGL_CAN_ID 0x00090002
 
 int main()
 {
@@ -290,6 +290,15 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
         can_data[i] = data[4 + i]; // 4 is data position
     }
 
+    if (can_id == AGL_CAN_ID) {
+        //printf("agl");
+        uint16_t raw = (uint16_t) ((data[4] << 8) + data[5]);
+        float altitude = float(raw) / 100.0f;
+        if (altitude > 0.1f && altitude < 40.0f)
+            m_agl::publish(altitude);
+        return;
+    }
+
     //CAN ID 0xFF
     switch (can_id & 0xFF) {
     case VESC_TAIL_ID: {
@@ -364,14 +373,7 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
         m_egt_3::publish(egt[2] / 10.f); //EGT3
         m_egt_4::publish(egt[3] / 10.f); //EGT4
     }
-    /*case AGL_CAN_ID: {
-        int16_t raw = (int16_t) (data[5] << 8) + data[6];
-        float altitude = float(raw) / 100.0f;
-        if (altitude > 0.1f && altitude < 40.0f)
-            m_agl::publish(altitude);
 
-        break;
-    }*/
     case UVHPU_PACK1:
     case UVHPU_PACK2:
     case UVHPU_PACK3:
