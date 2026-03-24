@@ -135,6 +135,9 @@ UVHPU _uvhpu{};
 int main()
 {
     schedule_periodic(task("on_ecu"), TASK_ECU_MS);
+
+    task("uvhpu"); //GCS with terminal command `vmexec("uvhpu")`
+
     receive(PORT_ID, "on_serial");
 }
 
