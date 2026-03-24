@@ -339,12 +339,12 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
         float param;
         int16_t raw;
 
-        raw = (int16_t) (data[9] << 8) + data[10];
+        raw = (int16_t) (data[8] << 8) + data[9];
         param = float(raw);
         float oil_temp = (param / 10.0f - 32.0f) * 5.0f / 9.0f;
         m_oil_temp::publish(oil_temp); // Oil temperature [deg]
 
-        raw = (int16_t) (data[11] << 8) + data[12];
+        raw = (int16_t) (data[10] << 8) + data[11];
         param = float(raw);
         float coolant_temp = (param / 10.0f - 32.0f) * 5.0f / 9.0f;
         m_cool_temp::publish(coolant_temp); // Coolant temperature [deg]
@@ -352,7 +352,7 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
 
     case CAN_BASE_ADDR + 15: {
         //printf("oil pressure");
-        int16_t raw = (int16_t) (data[5] << 8) | data[6]; // raw param
+        uint16_t raw = (uint16_t) ((data[4] << 8) | data[5]); // raw param
         float param = float(raw);
 
         //float oil_pressure = (float(param)*0.02822581)-3.27822581); //Oil pressure
@@ -364,11 +364,9 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
         //printf("egt");
         float egt[4];
         for (uint8_t i = 0; i < 4; i++) {
-            uint8_t idx = i * 2 + 5;
-            int16_t raw_egt = (int16_t) (data[idx] << 8) + data[idx + 1]; // EGT1 deg F s
+            uint8_t idx = i * 2 + 4;
+            uint16_t raw_egt = (uint16_t) (data[idx] << 8) + data[idx + 1]; // EGT1 deg F s
             egt[i] = float(raw_egt);
-            if (data[idx] & 0x80)
-                egt[i] += (0xffff << 16);
         }
 
         m_egt_1::publish(egt[0] / 10.f); //EGT1
