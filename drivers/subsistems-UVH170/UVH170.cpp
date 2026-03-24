@@ -1,6 +1,6 @@
 #include <apx.h>
 
-const uint8_t PORT_ID{60};
+const uint8_t PORT_ID{1};
 const uint8_t PACK_SIZE_CAN{12};
 const uint8_t TASK_ECU_MS{200};
 
@@ -9,16 +9,16 @@ const uint8_t OFFSET_CAN_ID_CURRENT_THROTTLE{71};
 const uint16_t CAN_ID_CURRENT_THROTTLE = CAN_BASE_ADDR + OFFSET_CAN_ID_CURRENT_THROTTLE;
 
 using m_oil_temp = Mandala<mandala::est::env::usr::u1>;
-using m_cool_temp = Mandala<mandala::est::env::usr::u2>;
-using m_oil_press = Mandala<mandala::est::env::usr::u3>;
-using m_egt_1 = Mandala<mandala::est::env::usr::u4>;
+using m_cool_temp = Mandala<mandala::est::env::usrc::c2>; //???
+using m_oil_press = Mandala<mandala::est::env::usr::u15>;
+using m_egt_1 = Mandala<mandala::est::env::usrc::c3>; //???
 using m_egt_2 = Mandala<mandala::est::env::usr::u5>;
 using m_egt_3 = Mandala<mandala::est::env::usr::u6>;
 using m_egt_4 = Mandala<mandala::est::env::usr::u7>;
 
 //Vesc tail
 using m_vesc_tail_rpm = Mandala<mandala::est::env::usrf::f5>;
-using m_vesc_tail_current = Mandala<mandala::est::env::usr::u10>;
+using m_vesc_tail_current = Mandala<mandala::est::env::usr::u14>;
 using m_vesc_tail_duty = Mandala<mandala::est::env::usr::u8>;
 using m_vesc_tail_temp_fet = Mandala<mandala::est::env::usr::u11>;
 using m_vesc_tail_temp_motor = Mandala<mandala::est::env::usr::u12>;
@@ -279,14 +279,14 @@ void processVESCPackage(const uint32_t &msg_id, const uint8_t *data, VESC_CAN_Da
 
 EXPORT void on_serial(const uint8_t *data, size_t size)
 {
-    if (size != PACK_SIZE_CAN) {
-        return;
-    }
     //printf("%d", size);
+    if (size != PACK_SIZE_CAN) {
+        //return;
+    }
 
     uint32_t can_id = (uint32_t) (data[0] + (data[1] << 8) + (data[2] << 16) + (data[3] << 24));
     can_id &= 0x7FFFFFFF; // 32nd bit is ext/std flag
-    //printf("can_id:%d\n", can_id);
+    //printf("can_id:%x\n", can_id);
 
     uint8_t can_data[8] = {};
     for (uint8_t i = 0; i < 8; i++) {
