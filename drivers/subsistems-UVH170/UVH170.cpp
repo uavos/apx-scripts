@@ -348,6 +348,7 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
         param = float(raw);
         float coolant_temp = (param / 10.0f - 32.0f) * 5.0f / 9.0f;
         m_cool_temp::publish(coolant_temp); // Coolant temperature [deg]
+        break;
     }
 
     case CAN_BASE_ADDR + 15: {
@@ -358,6 +359,7 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
         //float oil_pressure = (float(param)*0.02822581)-3.27822581); //Oil pressure
         float oil_pressure = (param * 0.02083333f) - 7.02083333f;
         m_oil_press::publish(oil_pressure);
+        break;
     }
 
     case CAN_BASE_ADDR + 22: {
@@ -373,6 +375,7 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
         m_egt_2::publish(egt[1] / 10.f); //EGT2
         m_egt_3::publish(egt[2] / 10.f); //EGT3
         m_egt_4::publish(egt[3] / 10.f); //EGT4
+        break;
     }
 
     case UVHPU_PACK1:
