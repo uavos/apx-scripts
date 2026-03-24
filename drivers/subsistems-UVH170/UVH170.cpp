@@ -132,9 +132,14 @@ UVHPU _uvhpu{};
 //-------------------------------------------------------------------------------------
 #define AGL_CAN_ID 0x00090002
 
+//-------------------------------------------------------------------------------------
+void setRPM(const uint8_t &, const int32_t &);
+void setCurrent(const uint8_t &, const float &);
+
 int main()
 {
     schedule_periodic(task("on_ecu"), TASK_ECU_MS);
+    schedule_periodic(task("on_start_eng", 100);
 
     task("uvhpu"); //GCS with terminal command `vmexec("uvhpu")`
 
@@ -155,6 +160,17 @@ void setThrottleMS()
     memcpy(&data[5], &ch_throttle, 4);
     data[9] = 1;
     send(PORT_ID, data, 10, false);
+}
+
+EXPORT void on_start_eng()
+{
+    ECUDemandControl(uint16_t((m_eng_ctr::value() * 0.9f + 0.1f) * 1000.f));
+
+    bool on_power_ignition = (bool) m_pwr_ign::value();
+
+    if (on_power_ignition && (uint32_t) m_sw_starter::value()) {
+        setRPM(VESC_GEN_ID, -40000);
+    }
 }
 
 EXPORT void on_ecu()
@@ -237,6 +253,29 @@ EXPORT void uvhpu()
 
     printf("life_cycles: %u", _uvhpu.MSG7.life_cycles);
     printf("cbat_mod: %.2f", _uvhpu.MSG7.cbat_mod);
+}
+
+void setCurrent(const uint8_t &VECS_CAN_ID, const float &val)
+{
+    uint8_t msg[4 + 4] = {}; // ext id + DATA
+    int32_t current = int32_t(val * 1000);
+
+    msg[0] = VECS_CAN_ID;
+    msg[1] = CAN_PACKET_SET_CURRENT;
+    msg[3] |= 0x80; // IDE (bit 7) 1=ext,0=std;
+    serializeInt(msg, 4, current);
+    send(port_aux_id, msg, 8, false);
+}
+
+void setRPM(const uint8_t &VECS_CAN_ID, const int32_t &val)
+{
+    uint8_t msg[4 + 4] = {}; // ext id + DATA
+
+    msg[0] = VECS_CAN_ID;
+    msg[1] = CAN_PACKET_SET_RPM;
+    msg[3] |= 0x80; // IDE (bit 7) 1=ext,0=std
+    serializeInt(msg, 4, val);
+    send(port_aux_id, msg, 8, false);
 }
 
 void processVESCPackage(const uint32_t &msg_id, const uint8_t *data, VESC_CAN_Data *vesc_data)
