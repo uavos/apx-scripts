@@ -34,6 +34,11 @@ using m_vesc_gen_fet_temp = Mandala<mandala::est::env::usrc::c6>;
 using m_uvhpy_status = Mandala<mandala::est::env::usrc::c4>;
 using m_uvhpy_ibat_filt = Mandala<mandala::est::env::usrf::f1>;
 
+//Engine
+using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
+using m_sw_starter = Mandala<mandala::ctr::nav::eng::starter>;
+using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
+
 // AGL
 using m_agl = Mandala<mandala::est::env::usr::u9>;
 
@@ -139,7 +144,7 @@ void setCurrent(const uint8_t &, const float &);
 int main()
 {
     schedule_periodic(task("on_ecu"), TASK_ECU_MS);
-    schedule_periodic(task("on_start_eng", 100);
+    schedule_periodic(task("on_start_eng"), 100);
 
     task("uvhpu"); //GCS with terminal command `vmexec("uvhpu")`
 
@@ -164,7 +169,7 @@ void setThrottleMS()
 
 EXPORT void on_start_eng()
 {
-    ECUDemandControl(uint16_t((m_eng_ctr::value() * 0.9f + 0.1f) * 1000.f));
+    //ECUDemandControl(uint16_t((m_eng_ctr::value() * 0.9f + 0.1f) * 1000.f));
 
     bool on_power_ignition = (bool) m_pwr_ign::value();
 
@@ -178,6 +183,14 @@ EXPORT void on_ecu()
     setThrottleMS();
 
     //Calc LAMBDA
+}
+
+void serializeInt(uint8_t *data, uint8_t index, int32_t value)
+{
+    for (uint8_t i = 0; i < 4; i++) {
+        uint8_t shift = 8 * (4 - i - 1);
+        data[index + i] = (value >> shift) & 0xFF;
+    }
 }
 
 int16_t unpackInt16(const uint8_t *data, uint8_t index)
@@ -264,7 +277,7 @@ void setCurrent(const uint8_t &VECS_CAN_ID, const float &val)
     msg[1] = CAN_PACKET_SET_CURRENT;
     msg[3] |= 0x80; // IDE (bit 7) 1=ext,0=std;
     serializeInt(msg, 4, current);
-    send(port_aux_id, msg, 8, false);
+    send(PORT_ID, msg, 8, false);
 }
 
 void setRPM(const uint8_t &VECS_CAN_ID, const int32_t &val)
@@ -275,7 +288,7 @@ void setRPM(const uint8_t &VECS_CAN_ID, const int32_t &val)
     msg[1] = CAN_PACKET_SET_RPM;
     msg[3] |= 0x80; // IDE (bit 7) 1=ext,0=std
     serializeInt(msg, 4, val);
-    send(port_aux_id, msg, 8, false);
+    send(PORT_ID, msg, 8, false);
 }
 
 void processVESCPackage(const uint32_t &msg_id, const uint8_t *data, VESC_CAN_Data *vesc_data)
