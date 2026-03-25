@@ -18,7 +18,7 @@ using m_egt_3 = Mandala<mandala::est::env::usrc::c3>;
 using m_egt_4 = Mandala<mandala::est::env::usrc::c4>;
 
 //Vesc tail
-using m_vesc_tail_rpm = Mandala<mandala::est::env::usrf::u5>;
+using m_vesc_tail_rpm = Mandala<mandala::est::env::usr::u5>;
 using m_vesc_tail_current = Mandala<mandala::est::env::usr::u6>;
 using m_vesc_tail_duty = Mandala<mandala::est::env::usr::u7>;
 using m_vesc_tail_temp_fet = Mandala<mandala::est::env::usr::u8>;
@@ -29,7 +29,7 @@ using m_vesc_tail_curr_in = Mandala<mandala::est::env::usr::u11>;
 using m_vesc_gen_rpm = Mandala<mandala::sns::env::gen::rpm>;
 using m_vesc_gen_curr_in = Mandala<mandala::sns::env::gen::current>;
 using m_vesc_gen_motor_temp = Mandala<mandala::sns::env::gen::temp>;
-using m_vesc_gen_fet_temp = Mandala<mandala::est::env::usrc::u12>;
+using m_vesc_gen_fet_temp = Mandala<mandala::est::env::usr::u12>;
 
 //Uvhpy
 using m_uvhpy_status = Mandala<mandala::est::env::usrc::c5>;
