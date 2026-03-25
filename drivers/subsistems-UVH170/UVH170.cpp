@@ -8,30 +8,31 @@ const uint16_t CAN_BASE_ADDR{1520};
 const uint8_t OFFSET_CAN_ID_CURRENT_THROTTLE{71};
 const uint16_t CAN_ID_CURRENT_THROTTLE = CAN_BASE_ADDR + OFFSET_CAN_ID_CURRENT_THROTTLE;
 
-using m_oil_temp = Mandala<mandala::est::env::usr::u1>;
-using m_cool_temp = Mandala<mandala::est::env::usrc::c2>; //???
+//u2 u3 u4 u10 are already used in adc & gpio
+using m_oil_temp = Mandala<mandala::est::env::usr::u13>;
+using m_cool_temp = Mandala<mandala::est::env::usr::u14>;
 using m_oil_press = Mandala<mandala::est::env::usr::u15>;
-using m_egt_1 = Mandala<mandala::est::env::usrc::c3>; //???
-using m_egt_2 = Mandala<mandala::est::env::usr::u5>;
-using m_egt_3 = Mandala<mandala::est::env::usr::u6>;
-using m_egt_4 = Mandala<mandala::est::env::usr::u7>;
+using m_egt_1 = Mandala<mandala::est::env::usrc::c1>;
+using m_egt_2 = Mandala<mandala::est::env::usrc::c2>;
+using m_egt_3 = Mandala<mandala::est::env::usrc::c3>;
+using m_egt_4 = Mandala<mandala::est::env::usrc::c4>;
 
 //Vesc tail
-using m_vesc_tail_rpm = Mandala<mandala::est::env::usrf::f5>;
-using m_vesc_tail_current = Mandala<mandala::est::env::usr::u14>;
-using m_vesc_tail_duty = Mandala<mandala::est::env::usr::u8>;
-using m_vesc_tail_temp_fet = Mandala<mandala::est::env::usr::u11>;
-using m_vesc_tail_temp_motor = Mandala<mandala::est::env::usr::u12>;
-using m_vesc_tail_curr_in = Mandala<mandala::est::env::usr::u13>;
+using m_vesc_tail_rpm = Mandala<mandala::est::env::usrf::u5>;
+using m_vesc_tail_current = Mandala<mandala::est::env::usr::u6>;
+using m_vesc_tail_duty = Mandala<mandala::est::env::usr::u7>;
+using m_vesc_tail_temp_fet = Mandala<mandala::est::env::usr::u8>;
+using m_vesc_tail_temp_motor = Mandala<mandala::est::env::usr::u9>;
+using m_vesc_tail_curr_in = Mandala<mandala::est::env::usr::u11>;
 
 //Vesc gen
 using m_vesc_gen_rpm = Mandala<mandala::sns::env::gen::rpm>;
 using m_vesc_gen_curr_in = Mandala<mandala::sns::env::gen::current>;
 using m_vesc_gen_motor_temp = Mandala<mandala::sns::env::gen::temp>;
-using m_vesc_gen_fet_temp = Mandala<mandala::est::env::usrc::c6>;
+using m_vesc_gen_fet_temp = Mandala<mandala::est::env::usrc::u12>;
 
 //Uvhpy
-using m_uvhpy_status = Mandala<mandala::est::env::usrc::c4>;
+using m_uvhpy_status = Mandala<mandala::est::env::usrc::c5>;
 using m_uvhpy_ibat_filt = Mandala<mandala::est::env::usrf::f1>;
 
 //Engine
@@ -40,7 +41,7 @@ using m_sw_starter = Mandala<mandala::ctr::nav::eng::starter>;
 using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
 
 // AGL
-using m_agl = Mandala<mandala::est::env::usr::u9>;
+using m_agl = Mandala<mandala::est::env::usr::u1>;
 
 //VESC
 //-------------------------------------------------------------------------------------
@@ -147,6 +148,10 @@ int main()
     schedule_periodic(task("on_start_eng"), 100);
 
     task("uvhpu"); //GCS with terminal command `vmexec("uvhpu")`
+
+    m_pwr_ign(); //subscribe
+    m_sw_starter();
+    m_eng_ctr();
 
     receive(PORT_ID, "on_serial");
 }
