@@ -133,9 +133,9 @@ int main()
     m_t8();
 
     receive(port_esc_id, "on_serial_esc");
-    task("on_task", 10);
 
-    task("rc_mode", 10);
+    schedule_periodic(task("on_task"), 10);
+    schedule_periodic(task("rc_mode"), 10);
 
     return 0;
 }
