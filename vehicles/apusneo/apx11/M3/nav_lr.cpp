@@ -17,7 +17,7 @@ constexpr const uint8_t RECEIVER_ID{4};
 
 constexpr const uint8_t MSG4_ID{3};
 
-constexpr const port_id_t PORT_ID_WING{43};
+constexpr const port_id_t PORT_ID_WING{7};
 
 constexpr const uint16_t TASK_TELEMETRY_MS{200}; //5Hz
 constexpr const uint16_t TASK_HEATER_MS{2000};   //0.5Hz
@@ -31,6 +31,7 @@ struct WING_DATA
     int8_t volz_temp[2];
     int16_t volz_pos[2];
     int8_t gyro_temp;
+    int8_t ntc3570;
     uint8_t crc;
 };
 #pragma pack()
@@ -56,6 +57,8 @@ using m_s2 = Mandala<mandala::sns::env::scr::s2>; //volz temp
 using m_s3 = Mandala<mandala::sns::env::scr::s3>; //volz pos
 using m_s4 = Mandala<mandala::sns::env::scr::s4>; //volz pos
 
+using m_s5 = Mandala<mandala::sns::env::scr::s5>; //ntc3570
+
 using m_pwr_sys = Mandala<mandala::sns::env::pwr::vsys>; //pwr nav
 using m_pwr_srv = Mandala<mandala::sns::env::pwr::vsrv>; //pwr srv
 
@@ -67,6 +70,7 @@ int main()
     m_s2();
     m_s3();
     m_s4();
+    m_s5();
 
     m_pwr_sys();
     m_pwr_srv();
@@ -110,6 +114,7 @@ EXPORT void on_telemetry()
     _wing.volz_pos[0] = (int16_t) m_s3::value();
     _wing.volz_pos[1] = (int16_t) m_s4::value();
     _wing.gyro_temp = (int8_t) m_sns_temp::value();
+    _wing.ntc3570 = (int8_t) m_s5::value();
 
     //crc
     _wing.crc = calcTelemetryCRC(&_wing.header[0], sizeof(WING_DATA) - 1);
