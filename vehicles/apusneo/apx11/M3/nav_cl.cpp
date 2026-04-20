@@ -1,0 +1,99 @@
+#include <apx.h>
+
+constexpr const char *txt_dev = "CL"; //CL
+
+constexpr const uint16_t TASK_MAIN_MS{1000};
+constexpr const uint16_t TASK_HEATER_MS{2000};
+
+//----------------------Temperature-------------------------
+constexpr const uint16_t START_HEATER{10};
+
+using m_sw1 = Mandala<mandala::ctr::env::sw::sw1>; //nav-l
+using m_sw2 = Mandala<mandala::ctr::env::sw::sw2>; //nav-cl
+using m_sw3 = Mandala<mandala::ctr::env::sw::sw3>; //lan
+using m_sw4 = Mandala<mandala::ctr::env::sw::sw4>; //ifc-cr
+using m_sw5 = Mandala<mandala::ctr::env::sw::sw5>; //nav-r
+using m_sw6 = Mandala<mandala::ctr::env::sw::sw6>; //fts
+using m_sw7 = Mandala<mandala::ctr::env::sw::sw7>; //adsb-tx
+
+using m_sw_manual = Mandala<mandala::ctr::env::sw::sw8>; //heater manual
+using m_status_heater = Mandala<mandala::est::env::usrc::c8>;
+
+using m_sns_temp = Mandala<mandala::sns::nav::gyro::temp>; //gyro temp
+
+using m_ltt = Mandala<mandala::est::env::sys::ltt>;
+using m_health = Mandala<mandala::est::env::sys::health>;
+
+using m_thr_cut = Mandala<mandala::cmd::nav::eng::cut>;
+using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
+
+using m_pwr_satcom = Mandala<mandala::ctr::env::pwr::satcom>;
+
+int main()
+{
+    //subscribe
+    m_sw1();
+    m_sw2();
+    m_sw3();
+    m_sw4();
+    m_sw5();
+    m_sw6();
+    m_sw7();
+
+    m_status_heater();
+
+    m_sns_temp();
+
+    m_sw_manual();
+
+    m_mode();
+
+    m_ltt();
+    m_health();
+
+    schedule_periodic(task("on_main"), TASK_MAIN_MS);
+    schedule_periodic(task("on_heater"), TASK_HEATER_MS);
+
+    printf("NAV:%s Script ready...\n", txt_dev);
+
+    return 0;
+}
+
+EXPORT void on_main()
+{
+    uint32_t status = ((uint32_t) m_sw1::value() << 0) | ((uint32_t) m_sw2::value() << 1)
+                      | ((uint32_t) m_sw3::value() << 2) | ((uint32_t) m_sw4::value() << 3)
+                      | ((uint32_t) m_sw5::value() << 4) | ((uint32_t) m_sw6::value() << 5)
+                      | ((uint32_t) m_sw7::value() << 6);
+
+    m_status_heater::publish((uint32_t) status);
+
+    if ((uint32_t) m_ltt::value() < 10) {
+        m_health::publish((uint32_t) mandala::sys_health_normal);
+    }
+
+    if ((uint32_t) m_health::value() == mandala::sys_health_warning
+        && (uint32_t) m_mode::value() != mandala::proc_mode_TAXI) {
+        m_pwr_satcom::publish((uint32_t) mandala::pwr_satcom_on);
+
+        m_thr_cut::publish((uint32_t) mandala::eng_cut_on);
+        m_mode::publish((uint32_t) mandala::proc_mode_LANDING);
+    }
+}
+
+EXPORT void on_heater()
+{
+    if ((bool) m_sw_manual::value()) {
+        return;
+    }
+
+    float RT = m_sns_temp::value();
+
+    if (RT < START_HEATER) {
+        m_sw2::publish(1u);
+    }
+
+    if (RT > START_HEATER * 1.5f) {
+        m_sw2::publish(0u);
+    }
+}

@@ -41,7 +41,7 @@ WING_DATA _wing = {};
 //----------------------Temperature-------------------------
 constexpr const uint16_t START_HEATER{10}; //degrees C
 
-using m_sw_manual = Mandala<mandala::ctr::env::sw::sw15>; //heater manual
+using m_sw_manual = Mandala<mandala::ctr::env::sw::sw8>; //heater manual
 
 #if defined NODE_LEFT
 using m_sw = Mandala<mandala::ctr::env::sw::sw1>; //heater off/on
