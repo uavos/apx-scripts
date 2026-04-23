@@ -39,11 +39,11 @@ void setThrottleIgn()
     data[3] = (CAN_ID_CURRENT_THROTTLE >> 24) & 0xFF;
     data[4] = 5; //size of useful payload
 
-    float ch_throttle = m_eng_ctr::value(); // -1.0 ... +1.0
+    float ch_throttle = m_eng_ctr::value() * 2.f - 1.f; // -1.0 ... +1.0
     memcpy(&data[5], &ch_throttle, 4);
     //printf("thr:%.2f", ch_throttle);
 
-    uint8_t power_eng = m_pwr_ign::value(); //  0 / 1
+    uint8_t power_eng = (bool) m_pwr_ign::value(); //  0 / 1
     data[9] = power_eng;
     send(PORT_ID, data, 10, true);
 }
