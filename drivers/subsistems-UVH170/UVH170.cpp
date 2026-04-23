@@ -25,6 +25,7 @@ using m_uvhpy_ibat_filt = Mandala<mandala::est::env::usrf::f1>;
 using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
 using m_sw_starter = Mandala<mandala::ctr::nav::eng::starter>;
 using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
+using m_rpm = Mandala<mandala::est::env::usr::u4>;
 
 // AGL
 using m_agl = Mandala<mandala::est::env::usr::u1>;
@@ -132,9 +133,13 @@ UVHPU _uvhpu{};
 void setRPM(const uint8_t &, const int32_t &);
 void setCurrent(const uint8_t &, const float &);
 
+float rpm_prev = 0.0f;
+static uint32_t same_counter = 0;
+const uint32_t SAME_LIMIT = 30; //3 sec at 100ms interval
+
 int main()
 {
-    schedule_periodic(task("on_start_eng"), 100);
+    schedule_periodic(task("on_main"), 100);
 
     task("uvhpu"); //GCS with terminal command `vmexec("uvhpu")`
 
@@ -142,21 +147,36 @@ int main()
     m_sw_starter();
     m_eng_ctr();
     m_fps_adc();
+    m_rpm();
 
     receive(PORT_ID, "on_serial");
 }
 
-EXPORT void on_start_eng()
+EXPORT void on_main()
 {
+    //power ignition logic
     bool on_power_ignition = (bool) m_pwr_ign::value();
-
     if (on_power_ignition && (uint32_t) m_sw_starter::value()) {
         setRPM(VESC_GEN_ID, -40000);
         //setCurrent(VESC_GEN_ID, 0.0f);
     }
 
+    // calculate fuel pressure from ADC value
     float fuel_pressure = (m_fps_adc::value() - 0.2f) / 0.6429f; //bar
     m_fps::publish(fuel_pressure);
+
+    //RPM anti-stuck logic: if RPM is the same for a long time and less than 500, set it to 0
+    float rpm_main = m_rpm::value();
+    if (rpm_main == rpm_prev) {
+        same_counter++;
+        if (same_counter >= SAME_LIMIT && rpm_main < 500.f) {
+            m_rpm::publish(0.0f);
+            same_counter = 0; // сбрасываем, чтобы не зациклиться
+        }
+    } else {
+        rpm_prev = rpm_main;
+        same_counter = 0;
+    }
 }
 
 void serializeInt(uint8_t *data, uint8_t index, int32_t value)
