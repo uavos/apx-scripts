@@ -37,7 +37,7 @@ void setThrottleIgn()
     data[1] = (CAN_ID_CURRENT_THROTTLE >> 8) & 0xFF;
     data[2] = (CAN_ID_CURRENT_THROTTLE >> 16) & 0xFF;
     data[3] = (CAN_ID_CURRENT_THROTTLE >> 24) & 0xFF;
-    data[4] = 5;
+    data[4] = 5; //size of useful payload
 
     float ch_throttle = m_eng_ctr::value(); // -1.0 ... +1.0
     memcpy(&data[5], &ch_throttle, 4);
