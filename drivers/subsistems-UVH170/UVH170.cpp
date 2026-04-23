@@ -29,6 +29,10 @@ using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
 // AGL
 using m_agl = Mandala<mandala::est::env::usr::u1>;
 
+//fuel pressure ADC
+using m_fps_adc = Mandala<mandala::est::env::usr::u3>;
+using m_fps = Mandala<mandala::sns::env::fuel::ps>;
+
 //VESC
 //-------------------------------------------------------------------------------------
 #define VESC_TAIL_ID 0x24 // VESC ID 36
@@ -137,6 +141,7 @@ int main()
     m_pwr_ign(); //subscribe
     m_sw_starter();
     m_eng_ctr();
+    m_fps_adc();
 
     receive(PORT_ID, "on_serial");
 }
@@ -149,6 +154,9 @@ EXPORT void on_start_eng()
         setRPM(VESC_GEN_ID, -40000);
         //setCurrent(VESC_GEN_ID, 0.0f);
     }
+
+    float fuel_pressure = (m_fps_adc::value() - 0.2f) / 0.6429f; //bar
+    m_fps::publish(fuel_pressure);
 }
 
 void serializeInt(uint8_t *data, uint8_t index, int32_t value)
