@@ -1,6 +1,6 @@
 #include <apx.h>
 
-const uint8_t PORT_ID{1};
+const uint8_t PORT_ID{2};
 const uint8_t PACK_SIZE_CAN{12};
 const uint8_t TASK_ECU_MS{200};
 
@@ -18,19 +18,19 @@ using m_egt_3 = Mandala<mandala::est::env::usrc::c3>;
 using m_egt_4 = Mandala<mandala::est::env::usrc::c4>;
 
 using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
+using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
 
 int main()
 {
     schedule_periodic(task("on_ecu"), TASK_ECU_MS);
 
-    //m_pwr_ign(); //subscribe
-    //m_sw_starter();
+    m_pwr_ign(); //subscribe
     m_eng_ctr();
 
     receive(PORT_ID, "on_serial");
 }
 
-void setThrottleMS()
+void setThrottleIgn()
 {
     uint8_t data[13];
     data[0] = CAN_ID_CURRENT_THROTTLE & 0xFF;
@@ -39,22 +39,19 @@ void setThrottleMS()
     data[3] = (CAN_ID_CURRENT_THROTTLE >> 24) & 0xFF;
     data[4] = 5;
 
-    float ch_throttle = m_eng_ctr::value();
-    //printf("thr:%f/n", ch_throttle);
+    float ch_throttle = m_eng_ctr::value(); // -1.0 ... +1.0
     memcpy(&data[5], &ch_throttle, 4);
-    data[9] = 1;
-    send(PORT_ID, data, 10, false);
+    //printf("thr:%.2f", ch_throttle);
+
+    uint8_t power_eng = m_pwr_ign::value(); //  0 / 1
+    data[9] = power_eng;
+    send(PORT_ID, data, 10, true);
 }
 
 EXPORT void on_ecu()
 {
-    setThrottleMS();
-
-    //Calc LAMBDA
+    setThrottleIgn();
 }
-
-//ECUDemandControl(uint16_t((m_eng_ctr::value() * 0.9f + 0.1f) * 1000.f)); ???????
-
 
 EXPORT void on_serial(const uint8_t *data, size_t size)
 {
