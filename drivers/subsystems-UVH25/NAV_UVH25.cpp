@@ -67,7 +67,7 @@ using m_eng_current = Mandala<mandala::sns::env::eng::current>;
 using m_eng_rpm = Mandala<mandala::sns::env::eng::rpm>;
 
 // Altitude (AGL)
-using m_agl = Mandala<mandala::est::env::usr::u1>;
+using m_agl = Mandala<mandala::sns::nav::agl::radio>;
 
 //======================================================================================
 // DATA STRUCTURES
