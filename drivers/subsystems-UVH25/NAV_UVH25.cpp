@@ -13,6 +13,19 @@ const uint8_t PACK_SIZE_CAN{12};
 const uint8_t PACK_SIZE_ESC{10};
 
 //======================================================================================
+// ERS CONSTANTS
+//======================================================================================
+
+#define R_SQUIB_MIN 1.0f //Ohm
+#define R_SQUIB_MAX 8.5f //Ohm
+#define R_WIRES 0.68f    //Ohm, measured by shorting pyro with diag on
+
+#define MULT_PIRO_U_DIAG 1.128f
+#define MULT_SQUIB_U_DIAG 1.1f
+#define MULT_PIRO_U_ARM 1.128f
+#define MULT_SQUIB_U_ARM 1.1f
+
+//======================================================================================
 // CAN DEFINES AND IDS
 //======================================================================================
 
@@ -43,6 +56,12 @@ const uint8_t PACK_SIZE_ESC{10};
 #define AGL_CAN_ID 0x00090002
 
 //======================================================================================
+// ERS STATE ENUM
+//======================================================================================
+
+enum class ERS_State { ERROR = 0, DISARMED = 1, ARMED = 2, FIRED = 3 };
+
+//======================================================================================
 // TYPE ALIASES - MANDALA PARAMETERS
 //======================================================================================
 
@@ -68,6 +87,16 @@ using m_eng_rpm = Mandala<mandala::sns::env::eng::rpm>;
 
 // Altitude (AGL)
 using m_agl = Mandala<mandala::sns::nav::agl::radio>;
+
+//ERS
+using m_ERS_block = Mandala<mandala::sns::env::ers::block>;
+using m_ERS_launch = Mandala<mandala::ctr::env::ers::launch>;
+using m_pyro_U = Mandala<mandala::est::env::usrf::f5>;
+using m_squib_U = Mandala<mandala::est::env::usr::u3>;
+using m_ERS_fire = Mandala<mandala::est::env::usrb::b1>;
+using m_ERS_charge = Mandala<mandala::est::env::usrb::b2>;
+using m_ERS_diag = Mandala<mandala::est::env::usrb::b3>;
+using m_ERS_status = Mandala<mandala::est::env::usrb::b4>;
 
 //======================================================================================
 // DATA STRUCTURES
@@ -160,6 +189,10 @@ VESC_CAN_Data tail_data{};
 // UVHPU Data
 UVHPU _uvhpu{};
 
+// ERS State
+ERS_State ers_state = ERS_State::DISARMED;
+uint8_t stab_counter = 10; // 1sec time
+
 //======================================================================================
 // FUNCTION DECLARATIONS
 //======================================================================================
@@ -168,7 +201,6 @@ UVHPU _uvhpu{};
 void setRPM(const uint8_t &, const int32_t &);
 void setCurrent(const uint8_t &, const float &);
 
-
 //======================================================================================
 // MAIN ENTRY POINT
 //======================================================================================
@@ -176,11 +208,19 @@ void setCurrent(const uint8_t &, const float &);
 int main()
 {
     schedule_periodic(task("on_main"), 100);
+    schedule_periodic(task("on_ers"), 100);
 
     task("uvhpu"); // GCS with terminal command `vmexec("uvhpu")`
-    
+
     m_eng_ctr();
     m_rpm();
+
+    m_squib_U();
+    m_pyro_U();
+    m_ERS_block();
+    m_ERS_launch();
+
+    m_ERS_block::publish(true);
 
     receive(PORT_ID_ESC, "esc_handler");
     receive(PORT_ID_CAN, "on_serial");
@@ -352,6 +392,111 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
     case UVHPU_PACK7: {
         _uvhpu.MSG7.life_cycles = unpackInt16(data, 0);
         memcpy(&_uvhpu.MSG7.cbat_mod, data + 2, 4);
+        break;
+    }
+    }
+}
+
+//======================================================================================
+// ERS PERIODIC TASK
+//======================================================================================
+
+EXPORT void on_ers()
+{
+    /*float squib_R = (m_squib_U::value() * MULT_SQUIB_U_DIAG) / (200.0f)
+                        / (m_pyro_U::value() * MULT_PIRO_U_DIAG / 5600.0f)
+                    - R_WIRES;
+    printf("resist %.2f", squib_R);*/
+
+    switch (ers_state) {
+    case ERS_State::DISARMED: {
+        if (stab_counter == 10) { //start of check
+            m_ERS_status::publish(false);
+            m_ERS_diag::publish(false);
+            m_ERS_charge::publish(false);
+            m_ERS_fire::publish(false);
+            m_ERS_diag::publish(true);
+        }
+
+        float squib_R = (m_squib_U::value() * MULT_SQUIB_U_DIAG) / (200.0f)
+                            / (m_pyro_U::value() * MULT_PIRO_U_DIAG / 5600.0f)
+                        - R_WIRES;
+        printf("resist %.2f", squib_R);
+        if (squib_R < R_SQUIB_MIN || squib_R > R_SQUIB_MAX) {
+            stab_counter--;
+            if (stab_counter == 0) {
+                stab_counter = 10;
+                m_ERS_diag::publish(false);
+                //ers_state = ERS_State::ERROR;
+                printf("squib resistance out of range: %.2f", squib_R);
+            }
+            return;
+        }
+
+        if (m_pyro_U::value() > 3.3f) {
+            m_ERS_diag::publish(false);
+            printf("pyro voltage too high: %.2f", m_pyro_U::value());
+            //ers_state = ERS_State::ERROR;
+            return;
+        }
+
+        m_ERS_fire::publish(true);
+        sleep(1000);
+
+        if (m_pyro_U::value() > 0.3f) {
+            m_ERS_diag::publish(false);
+            printf("pyro voltage too high: %.2f", m_pyro_U::value());
+            //ers_state = ERS_State::ERROR;
+            return;
+        }
+
+        m_ERS_fire::publish(false);
+        //sleep(1000);
+        m_ERS_diag::publish(false);
+        //sleep(1000);
+
+        if (m_ERS_block::value() == false) {
+            ers_state = ERS_State::ARMED;
+            m_
+        }
+        break;
+    }
+    case ERS_State::ARMED: {
+        if (m_ERS_block::value() == true) {
+            ers_state = ERS_State::DISARMED;
+            return;
+        }
+        m_ERS_status::publish(true); //turn LED on
+        m_ERS_charge::publish(true); //charge capacitor
+        //delaY?
+
+        if (m_pyro_U::value() < 8.0f) {
+            printf("pyro voltage too low: %.2f", m_pyro_U::value());
+            return;
+        }
+
+        float squib_R = (m_squib_U::value() * MULT_SQUIB_U_ARM) / (200.0f)
+                            / (m_pyro_U::value() * MULT_PIRO_U_ARM / 5600.0f)
+                        - R_WIRES;
+
+        if (squib_R < R_SQUIB_MIN || squib_R > R_SQUIB_MAX) {
+            printf("squib resistance out of range: %.2f", squib_R);
+            return;
+        }
+
+        if (m_ERS_launch::value() == true) {
+            m_ERS_fire::publish(true);
+            ers_state = ERS_State::FIRED;
+        }
+
+        break;
+    }
+    case ERS_State::FIRED: {
+        printf("ERS FIRED");
+        break;
+    }
+    case ERS_State::ERROR: {
+        printf("ERS ERROR");
         break;
     }
     }
