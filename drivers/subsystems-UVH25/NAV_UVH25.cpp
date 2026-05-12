@@ -418,9 +418,10 @@ EXPORT void on_ers()
             m_ERS_diag::publish(true);
         }
 
-        float squib_R = (m_squib_U::value() * MULT_SQUIB_U_DIAG) / (200.0f)
-                            / (m_pyro_U::value() * MULT_PIRO_U_DIAG / 5600.0f)
-                        - R_WIRES;
+        float squib_U = m_squib_U::value() * MULT_SQUIB_U_DIAG;
+        float pyro_U = m_pyro_U::value() * MULT_PIRO_U_DIAG;
+        float squib_R = (squib_U / 200.0f) / (pyro_U / 5600.0f) - R_WIRES;
+
         printf("resist %.2f", squib_R);
         if (squib_R < R_SQUIB_MIN || squib_R > R_SQUIB_MAX) {
             stab_counter--;
@@ -433,19 +434,19 @@ EXPORT void on_ers()
             return;
         }
 
-        if (m_pyro_U::value() > 3.3f) {
+        if (pyro_U > 3.3f) {
             m_ERS_diag::publish(false);
-            printf("pyro voltage too high: %.2f", m_pyro_U::value());
+            printf("pyro voltage too high: %.2f", pyro_U);
             //ers_state = ERS_State::ERROR;
             return;
         }
 
         m_ERS_fire::publish(true);
-        sleep(1000);
+        //sleep(1000);
 
-        if (m_pyro_U::value() > 0.3f) {
+        if (pyro_U > 0.3f) {
             m_ERS_diag::publish(false);
-            printf("pyro voltage too high: %.2f", m_pyro_U::value());
+            printf("pyro voltage too high: %.2f", pyro_U);
             //ers_state = ERS_State::ERROR;
             return;
         }
@@ -470,14 +471,14 @@ EXPORT void on_ers()
         m_ERS_charge::publish(true); //charge capacitor
         //delaY?
 
-        if (m_pyro_U::value() < 8.0f) {
-            printf("pyro voltage too low: %.2f", m_pyro_U::value());
+        float squib_U = m_squib_U::value() * MULT_SQUIB_U_ARM; //recalibrate after charging
+        float pyro_U = m_pyro_U::value() * MULT_PIRO_U_ARM;
+        float squib_R = (squib_U / 200.0f) / (pyro_U / 5600.0f) - R_WIRES;
+
+        if (pyro_U < 8.0f) {
+            printf("pyro voltage too low: %.2f", pyro_U);
             return;
         }
-
-        float squib_R = (m_squib_U::value() * MULT_SQUIB_U_ARM) / (200.0f)
-                            / (m_pyro_U::value() * MULT_PIRO_U_ARM / 5600.0f)
-                        - R_WIRES;
 
         if (squib_R < R_SQUIB_MIN || squib_R > R_SQUIB_MAX) {
             printf("squib resistance out of range: %.2f", squib_R);
