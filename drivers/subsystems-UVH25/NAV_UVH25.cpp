@@ -24,6 +24,7 @@ const uint8_t PACK_SIZE_ESC{10};
 #define MULT_SQUIB_U_DIAG 1.1f
 #define MULT_PIRO_U_ARM 1.128f
 #define MULT_SQUIB_U_ARM 1.1f
+#define COUNTER_THRESHOLD 10
 
 //======================================================================================
 // CAN DEFINES AND IDS
@@ -59,7 +60,14 @@ const uint8_t PACK_SIZE_ESC{10};
 // ERS STATE ENUM
 //======================================================================================
 
-enum class ERS_State { ERROR = 0, DISARMED = 1, ARMED = 2, FIRED = 3 };
+enum class ERS_State {
+    ERROR = 0,
+    DISARMED_INIT = 1,
+    DISARMED_LOOP = 2,
+    ARM_INIT = 3,
+    ARM_LOOP = 4,
+    FIRED = 5
+};
 
 //======================================================================================
 // TYPE ALIASES - MANDALA PARAMETERS
@@ -190,8 +198,11 @@ VESC_CAN_Data tail_data{};
 UVHPU _uvhpu{};
 
 // ERS State
-ERS_State ers_state = ERS_State::DISARMED;
-uint8_t stab_counter = 10; // 1sec time
+ERS_State ers_state = ERS_State::DISARMED_INIT;
+bool fire_check_done = false;
+uint8_t diag_counter = COUNTER_THRESHOLD;
+uint8_t fire_check_counter = COUNTER_THRESHOLD;
+uint8_t charge_counter = COUNTER_THRESHOLD;
 
 //======================================================================================
 // FUNCTION DECLARATIONS
@@ -409,80 +420,92 @@ EXPORT void on_ers()
     printf("resist %.2f", squib_R);*/
 
     switch (ers_state) {
-    case ERS_State::DISARMED: {
-        if (stab_counter == 10) { //start of check
-            m_ERS_status::publish(false);
-            m_ERS_diag::publish(false);
-            m_ERS_charge::publish(false);
-            m_ERS_fire::publish(false);
-            m_ERS_diag::publish(true);
-        }
+    case ERS_State::DISARMED_INIT: {
+        m_ERS_status::publish(false); //turn LED off
+        m_ERS_charge::publish(false); //discharge capacitor
+        m_ERS_fire::publish(false);   //ensure fire is off
 
+        m_ERS_diag::publish(true); //turn on diag voltage
+        ers_state = ERS_State::DISARMED_LOOP;
+        break;
+    }
+    case ERS_State::DISARMED_LOOP: {
         float squib_U = m_squib_U::value() * MULT_SQUIB_U_DIAG;
         float pyro_U = m_pyro_U::value() * MULT_PIRO_U_DIAG;
         float squib_R = (squib_U / 200.0f) / (pyro_U / 5600.0f) - R_WIRES;
 
-        printf("resist %.2f", squib_R);
         if (squib_R < R_SQUIB_MIN || squib_R > R_SQUIB_MAX) {
-            stab_counter--;
-            if (stab_counter == 0) {
-                stab_counter = 10;
-                m_ERS_diag::publish(false);
-                //ers_state = ERS_State::ERROR;
+            diag_counter--;
+            if (diag_counter == 0) {
+                ers_state = ERS_State::ERROR;
                 printf("squib resistance out of range: %.2f", squib_R);
             }
             return;
+        } else {
+            diag_counter = COUNTER_THRESHOLD;
         }
 
         if (pyro_U > 3.3f) {
-            m_ERS_diag::publish(false);
             printf("pyro voltage too high: %.2f", pyro_U);
-            //ers_state = ERS_State::ERROR;
+            ers_state = ERS_State::ERROR;
             return;
         }
 
-        m_ERS_fire::publish(true);
-        //sleep(1000);
+        if (fire_check_done == false) {
+            m_ERS_fire::publish(true);
+            //delay here;
 
-        if (pyro_U > 0.3f) {
-            m_ERS_diag::publish(false);
-            printf("pyro voltage too high: %.2f", pyro_U);
-            //ers_state = ERS_State::ERROR;
-            return;
+            if (pyro_U > 0.3f) {
+                fire_check_counter--;
+                if (fire_check_counter == 0) {
+                    ers_state = ERS_State::ERROR;
+                    printf("pyro voltage did not drop after fire: %.2f", pyro_U);
+                }
+                return;
+            } else {
+                fire_check_counter = COUNTER_THRESHOLD;
+            }
+            //everything ok, disarm fire and move on
+            m_ERS_fire::publish(false);
+            fire_check_done = true;
         }
 
-        m_ERS_fire::publish(false);
-        //sleep(1000);
-        m_ERS_diag::publish(false);
-        //sleep(1000);
-
+        //all checks passed, wait for arm command
         if (m_ERS_block::value() == false) {
-            ers_state = ERS_State::ARMED;
-            m_
+            ers_state = ERS_State::ARM_INIT;
         }
         break;
     }
-    case ERS_State::ARMED: {
-        if (m_ERS_block::value() == true) {
-            ers_state = ERS_State::DISARMED;
-            return;
-        }
+    case ERS_State::ARM_INIT: {
+        m_ERS_diag::publish(false);  //ensure diag voltage is off
         m_ERS_status::publish(true); //turn LED on
         m_ERS_charge::publish(true); //charge capacitor
-        //delaY?
+
+        ers_state = ERS_State::ARM_LOOP;
+        break;
+    }
+
+    case ERS_State::ARM_LOOP: {
+        if (m_ERS_block::value() == true) {
+            ers_state = ERS_State::DISARMED_INIT;
+            return;
+        }
 
         float squib_U = m_squib_U::value() * MULT_SQUIB_U_ARM; //recalibrate after charging
         float pyro_U = m_pyro_U::value() * MULT_PIRO_U_ARM;
         float squib_R = (squib_U / 200.0f) / (pyro_U / 5600.0f) - R_WIRES;
 
-        if (pyro_U < 8.0f) {
-            printf("pyro voltage too low: %.2f", pyro_U);
-            return;
+        if (squib_R < R_SQUIB_MIN || squib_R > R_SQUIB_MAX) {
+            charge_counter--;
+            if (charge_counter == 0) {
+                printf("squib resistance out of range: %.2f", squib_R);
+            }
+        } else {
+            charge_counter = COUNTER_THRESHOLD;
         }
 
-        if (squib_R < R_SQUIB_MIN || squib_R > R_SQUIB_MAX) {
-            printf("squib resistance out of range: %.2f", squib_R);
-            return;
+        if (pyro_U < 8.0f) { //already stabilized at this point
+            printf("pyro voltage too low: %.2f", pyro_U);
         }
 
         if (m_ERS_launch::value() == true) {
@@ -492,12 +515,21 @@ EXPORT void on_ers()
 
         break;
     }
+
     case ERS_State::FIRED: {
         printf("ERS FIRED");
+        m_ERS_status::publish(false); //turn arm LED off
+        m_ERS_charge::publish(false); //discharge capacitor
+        m_ERS_fire::publish(false);   //ensure fire is off
         break;
     }
     case ERS_State::ERROR: {
         printf("ERS ERROR");
+        m_ERS_fire::publish(false);   //ensure fire is off
+        m_ERS_diag::publish(false);   //turn off diag voltage
+        m_ERS_status::publish(false); //turn arm LED off
+        m_ERS_charge::publish(false); //discharge capacitor
+
         break;
     }
     }
