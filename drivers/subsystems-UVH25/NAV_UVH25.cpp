@@ -195,6 +195,11 @@ struct UVHPU
 // ESC Handler Data
 ESC_VCP_Data esc_data;
 uint8_t esc_tbuf[PACK_SIZE_ESC]{};
+// anti-stuck rpm logic variables
+float rpm_prev = 0.0f;
+uint8_t same_counter = 0;
+#define SAME_LIMIT 30       //3 sec at 100ms interval
+#define MIN_RPM_CHECK 500.f //reset stuck rpm only below this value
 
 // VESC Tail Data
 VESC_CAN_Data tail_data{};
@@ -565,6 +570,19 @@ EXPORT void on_main()
     m_eng_volt::publish((float) esc_data.voltage);
     m_eng_current::publish((float) esc_data.current);
     m_eng_rpm::publish((uint32_t) esc_data.rpm);
+
+    //RPM anti-stuck logic: if RPM is the same for a long time and less than 500, set it to 0
+    float rpm_main = m_rpm::value();
+    if (rpm_main == rpm_prev) {
+        same_counter++;
+        if (same_counter >= SAME_LIMIT && rpm_main < MIN_RPM_CHECK) {
+            m_rpm::publish(0.0f);
+            same_counter = 0;
+        }
+    } else {
+        rpm_prev = rpm_main;
+        same_counter = 0;
+    }
 }
 
 //======================================================================================
