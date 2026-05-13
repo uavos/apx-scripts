@@ -109,7 +109,8 @@ using m_squib_U = Mandala<mandala::est::env::usr::u3>;
 using m_ERS_fire = Mandala<mandala::est::env::usrb::b1>;
 using m_ERS_charge = Mandala<mandala::est::env::usrb::b2>;
 using m_ERS_diag = Mandala<mandala::est::env::usrb::b3>;
-using m_ERS_status = Mandala<mandala::est::env::usrb::b4>;
+using m_ERS_LED = Mandala<mandala::est::env::usrb::b4>;
+using m_ERS_status = Mandala<mandala::sns::env::ers::status>;
 
 //======================================================================================
 // DATA STRUCTURES
@@ -242,7 +243,8 @@ int main()
     m_ERS_block();
     m_ERS_launch();
 
-    m_ERS_block::publish(true);
+    m_ERS_block::publish(true);          //disarm on start
+    m_ERS_status::publish((uint32_t) 2); //set status disarmed
 
     receive(PORT_ID_ESC, "esc_handler");
     receive(PORT_ID_CAN, "on_serial");
@@ -432,9 +434,10 @@ EXPORT void on_ers()
 
     switch (ers_state) {
     case ERS_State::DISARMED_INIT: {
-        m_ERS_status::publish(false); //turn LED off
-        m_ERS_charge::publish(false); //discharge capacitor
-        m_ERS_fire::publish(false);   //ensure fire is off
+        m_ERS_LED::publish(false);           //turn LED off
+        m_ERS_charge::publish(false);        //discharge capacitor
+        m_ERS_fire::publish(false);          //ensure fire is off
+        m_ERS_status::publish((uint32_t) 2); //set status disarmed
 
         m_ERS_diag::publish(true); //turn on diag voltage
         ers_state = ERS_State::DISARMED_LOOP;
@@ -495,9 +498,10 @@ EXPORT void on_ers()
         break;
     }
     case ERS_State::ARM_INIT: {
-        m_ERS_diag::publish(false);  //ensure diag voltage is off
-        m_ERS_status::publish(true); //turn LED on
-        m_ERS_charge::publish(true); //charge capacitor
+        m_ERS_diag::publish(false);          //ensure diag voltage is off
+        m_ERS_LED::publish(true);            //turn LED on
+        m_ERS_charge::publish(true);         //charge capacitor
+        m_ERS_status::publish((uint32_t) 1); //set status ok
 
         ers_state = ERS_State::ARM_LOOP;
         break;
@@ -539,7 +543,7 @@ EXPORT void on_ers()
     }
 
     case ERS_State::FIRED: {
-        m_ERS_status::publish(false); //turn arm LED off
+        m_ERS_LED::publish(false); //turn arm LED off
 
         if (m_ERS_block::value() == true) { //reset ERS state if needed by blocking ers
             ers_state = ERS_State::DISARMED_INIT;
@@ -549,10 +553,11 @@ EXPORT void on_ers()
         break;
     }
     case ERS_State::ERROR: {
-        m_ERS_fire::publish(false);   //ensure fire is off
-        m_ERS_diag::publish(false);   //turn off diag voltage
-        m_ERS_status::publish(false); //turn arm LED off
-        m_ERS_charge::publish(false); //discharge capacitor
+        m_ERS_fire::publish(false);          //ensure fire is off
+        m_ERS_diag::publish(false);          //turn off diag voltage
+        m_ERS_LED::publish(false);           //turn arm LED off
+        m_ERS_charge::publish(false);        //discharge capacitor
+        m_ERS_status::publish((uint32_t) 4); //set status failure
 
         break;
     }
