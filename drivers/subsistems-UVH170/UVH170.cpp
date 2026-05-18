@@ -1,7 +1,10 @@
 #include <apx.h>
 
-const uint8_t PORT_ID{1};
+const port_id_t PORT_ID{1};
+const port_id_t PORT_ID_FUEL{3};
+
 const uint8_t PACK_SIZE_CAN{12};
+const uint8_t MSG_FUEL_SIZE{9}; //FUEL
 
 //Vesc tail
 using m_vesc_tail_rpm = Mandala<mandala::est::env::usr::u5>;
@@ -33,6 +36,41 @@ using m_agl = Mandala<mandala::est::env::usr::u1>;
 //fuel pressure ADC
 using m_fps_adc = Mandala<mandala::est::env::usr::u3>;
 using m_fps = Mandala<mandala::sns::env::fuel::ps>;
+
+// DUT
+using m_fuel_p = Mandala<mandala::sns::env::fuel::level>;
+using m_fuel_l = Mandala<mandala::est::env::usrf::f2>;
+using m_warn = Mandala<mandala::est::env::usrb::b1>;
+
+const uint16_t TASK_FUEL_MS{500}; //msec
+
+uint8_t snd_fuel_buf[MSG_FUEL_SIZE] = {};
+uint8_t ADR_FUEL = 170;
+const float V_MAX1 = 16.7f;
+const uint8_t TIME_SA{5}; //sec
+struct _fuel
+{
+    _fuel(float v_max)
+        : V_MAX(v_max)
+        , liters(0.f)
+        , percent(0.f)
+        , time_ans(0)
+    {}
+
+    void set_percent(float p)
+    {
+        percent = p;
+        liters = (p * V_MAX) / 100.f;
+        time_ans = time_ms();
+    }
+
+    float V_MAX;   // max tank liters
+    float liters;  // liters
+    float percent; // percent
+    uint32_t time_ans;
+};
+
+_fuel fuel = _fuel(V_MAX1);
 
 //VESC
 //-------------------------------------------------------------------------------------
@@ -140,6 +178,7 @@ const uint32_t SAME_LIMIT = 30; //3 sec at 100ms interval
 int main()
 {
     schedule_periodic(task("on_main"), 100);
+    schedule_periodic(task("on_fuel"), TASK_FUEL_MS);
 
     task("uvhpu"); //GCS with terminal command `vmexec("uvhpu")`
 
@@ -150,6 +189,7 @@ int main()
     m_rpm();
 
     receive(PORT_ID, "on_serial");
+    receive(PORT_ID_FUEL, "on_fuel_serial");
 }
 
 EXPORT void on_main()
@@ -177,6 +217,57 @@ EXPORT void on_main()
         rpm_prev = rpm_main;
         same_counter = 0;
     }
+}
+
+EXPORT uint8_t calcCRC(const uint8_t *buf, size_t size)
+{
+    uint8_t crc = 0x00;
+
+    for (uint8_t j = 0; j < size; j++) {
+        uint8_t i = buf[j] ^ crc;
+        crc = 0;
+        if (i & 0x01)
+            crc ^= 0x5e;
+        if (i & 0x02)
+            crc ^= 0xbc;
+        if (i & 0x04)
+            crc ^= 0x61;
+        if (i & 0x08)
+            crc ^= 0xc2;
+        if (i & 0x10)
+            crc ^= 0x9d;
+        if (i & 0x20)
+            crc ^= 0x23;
+        if (i & 0x40)
+            crc ^= 0x46;
+        if (i & 0x80)
+            crc ^= 0x8c;
+    }
+    return crc % 256;
+}
+
+void check_answer_time()
+{
+    uint32_t now = time_ms();
+
+    m_warn::publish((fuel.time_ans + TIME_SA * 1000 < now) ? true : false);
+}
+
+EXPORT void on_fuel()
+{
+    check_answer_time();
+
+    m_fuel_l::publish(fuel.liters);
+    m_fuel_p::publish(fuel.percent);
+
+    //request fuel sensors
+    snd_fuel_buf[0] = 0x31;
+    snd_fuel_buf[2] = 0x06;
+
+    snd_fuel_buf[1] = ADR_FUEL;
+
+    snd_fuel_buf[3] = calcCRC(snd_fuel_buf, 3);
+    send(PORT_ID_FUEL, snd_fuel_buf, 4, true);
 }
 
 void serializeInt(uint8_t *data, uint8_t index, int32_t value)
@@ -391,5 +482,29 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
         processUVHPUackage(can_id, can_data);
         break;
     }
+    }
+}
+
+EXPORT void on_fuel_serial(const uint8_t *data, size_t size)
+{
+    //typePack(0)[0x3E] adr(1) fmt(2) data(3) crc(8)
+    if (size != MSG_FUEL_SIZE) {
+        return;
+    }
+
+    if ((data[0] != 0x3E) || (data[2] != 0x06)) {
+        return;
+    }
+
+    if (data[8] != calcCRC(data, 8)) {
+        return;
+    }
+
+    float fuel_percent = (float) (data[4] | (data[5] << 8)) / 10.f;
+
+    //printf("fuel: %.2f", fuel_percent);
+
+    if (data[1] == ADR_FUEL) {
+        fuel.set_percent(fuel_percent);
     }
 }
