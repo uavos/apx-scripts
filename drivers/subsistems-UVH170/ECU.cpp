@@ -1,8 +1,8 @@
 #include <apx.h>
 
-const uint8_t PORT_ID{2};
+const uint8_t PORT_ID{33};
 const uint8_t PACK_SIZE_CAN{12};
-const uint8_t TASK_ECU_MS{200};
+const uint8_t TASK_ECU_MS{50};
 
 const uint16_t CAN_BASE_ADDR{1520};
 const uint8_t OFFSET_CAN_ID_CURRENT_THROTTLE{71};
@@ -37,15 +37,14 @@ void setThrottleIgn()
     data[1] = (CAN_ID_CURRENT_THROTTLE >> 8) & 0xFF;
     data[2] = (CAN_ID_CURRENT_THROTTLE >> 16) & 0xFF;
     data[3] = (CAN_ID_CURRENT_THROTTLE >> 24) & 0xFF;
-    data[4] = 5; //size of useful payload
 
-    float ch_throttle = m_eng_ctr::value() * 2.f - 1.f; // -1.0 ... +1.0
-    memcpy(&data[5], &ch_throttle, 4);
+    float ch_throttle = m_eng_ctr::value(); // 0 ... +1.0
     //printf("thr:%.2f", ch_throttle);
+    memcpy(&data[4], &ch_throttle, 4); // copy float bytes to data
 
     uint8_t power_eng = (bool) m_pwr_ign::value(); //  0 / 1
     data[9] = power_eng;
-    send(PORT_ID, data, 10, true);
+    send(PORT_ID, data, 9, true);
 }
 
 EXPORT void on_ecu()
