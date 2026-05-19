@@ -43,7 +43,7 @@ void setThrottleIgn()
     memcpy(&data[4], &ch_throttle, 4); // copy float bytes to data
 
     uint8_t power_eng = (bool) m_pwr_ign::value(); //  0 / 1
-    data[9] = power_eng;
+    data[8] = power_eng;
     send(PORT_ID, data, 9, true);
 }
 
