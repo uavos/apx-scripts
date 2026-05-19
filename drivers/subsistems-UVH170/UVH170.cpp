@@ -167,11 +167,19 @@ UVHPU _uvhpu{};
 //-------------------------------------------------------------------------------------
 #define AGL_CAN_ID 0x00090002
 
-//-------------------------------------------------------------------------------------
+//-------------   STARTER CONFIG   ---------------------------------------------------------
+const uint8_t STARTER_RPM_TIME = 30;    //3 sec at 100ms interval
+const uint8_t STARTER_CURRENT_TIME = 5; //0.5 sec at 100ms interval
+const int32_t STARTER_RPM = 20000;      // ~1000 rpm for starter
+const float STARTER_CURRENT = 20.f;     // 20A for starter
+
 void setRPM(const uint8_t &, const int32_t &);
 void setCurrent(const uint8_t &, const float &);
+uint8_t currentStarterCnt = STARTER_CURRENT_TIME;
+uint8_t rpmStarterCnt = STARTER_RPM_TIME;
 
 float rpm_prev = 0.0f;
+bool starter_active = false;
 static uint32_t same_counter = 0;
 const uint32_t SAME_LIMIT = 30; //3 sec at 100ms interval
 
@@ -197,8 +205,25 @@ EXPORT void on_main()
     //power ignition logic
     bool on_power_ignition = (bool) m_pwr_ign::value();
     if (on_power_ignition && (uint32_t) m_sw_starter::value()) {
-        setRPM(VESC_GEN_ID, -40000);
-        //setCurrent(VESC_GEN_ID, 0.0f);
+        starter_active = true;
+    }
+
+    if (starter_active) {
+        m_eng_ctr::publish(0.0f);    //throttle to 0 during starter
+        if (currentStarterCnt > 0) { //current phase of starter
+            setCurrent(VESC_GEN_ID, -STARTER_CURRENT);
+            currentStarterCnt--;
+        } else { //rpm phase of starter
+            if (rpmStarterCnt > 0) {
+                setRPM(VESC_GEN_ID, STARTER_RPM);
+                rpmStarterCnt--;
+            } else {
+                starter_active = false;
+                currentStarterCnt = STARTER_CURRENT_TIME;
+                rpmStarterCnt = STARTER_RPM_TIME;
+                setRPM(VESC_GEN_ID, 0);
+            }
+        }
     }
 
     // calculate fuel pressure from ADC value
