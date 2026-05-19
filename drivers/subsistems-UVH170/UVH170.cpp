@@ -213,7 +213,8 @@ EXPORT void on_main()
         if (currentStarterCnt > 0) { //current phase of starter
             setCurrent(VESC_GEN_ID, -STARTER_CURRENT);
             currentStarterCnt--;
-        } else { //rpm phase of starter
+        }
+        if (currentStarterCnt == 0) { //rpm phase of starter
             if (rpmStarterCnt > 0) {
                 setRPM(VESC_GEN_ID, STARTER_RPM);
                 rpmStarterCnt--;
