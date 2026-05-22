@@ -168,7 +168,7 @@ UVHPU _uvhpu{};
 #define AGL_CAN_ID 0x00090002
 
 //-------------   STARTER CONFIG   ---------------------------------------------------------
-const uint8_t STARTER_RPM_TIME = 20;    //2 sec at 100ms interval
+const uint8_t STARTER_RPM_TIME = 30;    //3 sec at 100ms interval
 const uint8_t STARTER_CURRENT_TIME = 5; //0.5 sec at 100ms interval
 const int32_t STARTER_RPM = 20000;      // ~1000 rpm for starter
 const float STARTER_CURRENT = 20.f;     // 20A for starter
