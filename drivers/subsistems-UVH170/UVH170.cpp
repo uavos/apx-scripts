@@ -172,6 +172,7 @@ const uint8_t STARTER_RPM_TIME = 30;    //3 sec at 100ms interval
 const uint8_t STARTER_CURRENT_TIME = 5; //0.5 sec at 100ms interval
 const int32_t STARTER_RPM = 20000;      // ~1000 rpm for starter
 const float STARTER_CURRENT = 20.f;     // 20A for starter
+const float STARTER_THROTTLE = 0.01f;   // 1% throttle during starter
 
 void setRPM(const uint8_t &, const int32_t &);
 void setCurrent(const uint8_t &, const float &);
@@ -209,8 +210,8 @@ EXPORT void on_main()
     }
 
     if (starter_active) {
-        m_eng_ctr::publish(0.0f);    //throttle to 0 during starter
-        if (currentStarterCnt > 0) { //current phase of starter
+        m_eng_ctr::publish(STARTER_THROTTLE); //throttle to 1% during starter
+        if (currentStarterCnt > 0) {          //current phase of starter
             setCurrent(VESC_GEN_ID, -STARTER_CURRENT);
             currentStarterCnt--;
         }
