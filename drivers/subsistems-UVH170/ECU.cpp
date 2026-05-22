@@ -17,14 +17,14 @@ using m_map = Mandala<mandala::est::env::usrf::f4>;
 using m_ego = Mandala<mandala::est::env::usrf::f9>;
 using m_tps = Mandala<mandala::est::env::usrf::f5>;
 using m_vbat = Mandala<mandala::est::env::usrf::f6>;
-using m_pw1 = Mandala<mandala::est::env::usr::u13>;
-using m_pw2 = Mandala<mandala::est::env::usr::u14>;
-using m_rpm = Mandala<mandala::est::env::usr::u15>;
 
-using m_egt_1 = Mandala<mandala::est::env::usrc::c1>;
-using m_egt_2 = Mandala<mandala::est::env::usrc::c2>;
-using m_egt_3 = Mandala<mandala::est::env::usrc::c3>;
-using m_egt_4 = Mandala<mandala::est::env::usrc::c4>;
+using m_pw1 = Mandala<mandala::est::env::usrw::w1>;
+using m_pw2 = Mandala<mandala::est::env::usrw::w2>;
+using m_rpm = Mandala<mandala::est::env::usrw::w3>;
+using m_egt_1 = Mandala<mandala::est::env::usrw::w4>;
+using m_egt_2 = Mandala<mandala::est::env::usrw::w5>;
+using m_egt_3 = Mandala<mandala::est::env::usrw::w6>;
+using m_egt_4 = Mandala<mandala::est::env::usrw::w7>;
 
 using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
 using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;

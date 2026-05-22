@@ -21,7 +21,7 @@ using m_vesc_gen_motor_temp = Mandala<mandala::sns::env::gen::temp>;
 using m_vesc_gen_fet_temp = Mandala<mandala::est::env::usr::u12>;
 
 //Uvhpy
-using m_uvhpy_status = Mandala<mandala::est::env::usrc::c5>;
+using m_uvhpy_status = Mandala<mandala::est::env::usrc::c2>;
 using m_uvhpy_ibat_filt = Mandala<mandala::est::env::usrf::f1>;
 
 //Engine
@@ -40,7 +40,7 @@ using m_fps = Mandala<mandala::sns::env::fuel::ps>;
 // DUT
 using m_fuel_p = Mandala<mandala::sns::env::fuel::level>;
 using m_fuel_l = Mandala<mandala::est::env::usrf::f2>;
-using m_warn = Mandala<mandala::est::env::usrb::b1>;
+using m_warn = Mandala<mandala::est::env::usrc::c1>;
 
 const uint16_t TASK_FUEL_MS{500}; //msec
 
