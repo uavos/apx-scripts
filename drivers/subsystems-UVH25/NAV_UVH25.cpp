@@ -58,6 +58,13 @@ const uint8_t PACK_SIZE_ESC{10};
 #define UVHPU_PACK6 UVHPU_ID + 6
 #define UVHPU_PACK7 UVHPU_ID + 7
 
+//MCELL
+#define MCELL_ID 0x0100
+#define MCELL_PACK1 MCELL_ID + 1
+#define MCELL_PACK2 MCELL_ID + 2
+#define MCELL_PACK3 MCELL_ID + 3
+#define MCELL_PACK4 MCELL_ID + 4
+
 // Altitude (AGL) Sensor
 #define AGL_CAN_ID 0x00090002
 
@@ -97,6 +104,14 @@ using m_eng_temp = Mandala<mandala::sns::env::eng::temp>;
 using m_eng_volt = Mandala<mandala::sns::env::eng::voltage>;
 using m_eng_current = Mandala<mandala::sns::env::eng::current>;
 using m_eng_rpm = Mandala<mandala::sns::env::eng::rpm>;
+
+// Mcell
+using m_mcel_vbat = Mandala<mandala::sns::env::bat::voltage>;
+using m_mcel_tbat = Mandala<mandala::sns::env::bat::temp>;
+using m_mcel_status = Mandala<mandala::est::env::usrc::c1>;
+//using m_cell_tpcb = Mandala<
+//vcl_min
+//vcl_max
 
 // Altitude (AGL)
 using m_agl = Mandala<mandala::sns::nav::agl::radio>;
@@ -144,8 +159,19 @@ struct VESC_CAN_Data
     uint32_t tacho;              // STATUS_MSG_5
 };
 
-// UVHPU Data Structure
+// MCELL
 #pragma pack(1)
+struct MCELL
+{
+    float v_bat;
+    float t_bat;
+    float t_pcb;
+    uint8_t status;
+    int16_t cell[12] = {};
+    float cell_volt(uint8_t cell_idx) { return cell[cell_idx] / 1000.f; };
+};
+
+// UVHPU Data Structure
 struct UVHPU
 {
     struct
@@ -208,6 +234,9 @@ VESC_CAN_Data tail_data{};
 // UVHPU Data
 UVHPU _uvhpu{};
 
+// MCELL data
+MCELL _mcel{};
+
 // ERS State
 ERS_State ers_state = ERS_State::DISARMED_INIT;
 bool fire_check_done = false;
@@ -232,6 +261,7 @@ int main()
     schedule_periodic(task("on_main"), 100);
     schedule_periodic(task("on_ers"), TASK_ERS_PERIOD);
 
+    task("mcell"); //GCS with terminal command `vmexec("mcell")`
     task("uvhpu"); // GCS with terminal command `vmexec("uvhpu")`
 
     m_eng_ctr();
@@ -307,6 +337,39 @@ EXPORT void esc_handler(const uint8_t *data, size_t size)
     esc_data.current = float((esc_tbuf[3] << 8) | (esc_tbuf[4])) / 100.f;
     esc_data.consumption = uint16_t((esc_tbuf[5] << 8) | (esc_tbuf[6]));
     esc_data.rpm = uint16_t((esc_tbuf[7] << 8) | (esc_tbuf[8])) * 100 / 7u;
+}
+
+//======================================================================================
+// MultiCell PROCESSING - Battery monitor
+//======================================================================================
+
+void processMCELLPackage(const uint32_t &can_id, const uint8_t *data)
+{
+    switch (can_id) {
+    case MCELL_PACK1: {
+        _mcel.v_bat = (float) unpackInt16(data, 0) / 100.f;
+        _mcel.t_bat = (float) unpackInt16(data, 2) / 100.f;
+        _mcel.t_pcb = (float) unpackInt16(data, 4) / 100.f;
+        _mcel.status = data[7];
+
+        m_mcel_vbat::publish(_mcel.v_bat);
+        m_mcel_tbat::publish(_mcel.t_bat);
+        m_mcel_status::publish((uint32_t) _mcel.status);
+        break;
+    }
+    case MCELL_PACK2: {
+        memcpy(_mcel.cell, data, 8);
+        break;
+    }
+    case MCELL_PACK3: {
+        memcpy(_mcel.cell + 4, data, 8);
+        break;
+    }
+    case MCELL_PACK4: {
+        memcpy(_mcel.cell + 8, data, 8);
+        break;
+    }
+    }
 }
 
 //======================================================================================
@@ -622,6 +685,33 @@ EXPORT void uvhpu()
 }
 
 //======================================================================================
+// MultiCell TERMINAL COMMAND - DATA DISPLAY
+//======================================================================================
+
+EXPORT void mcell()
+{
+    printf("v_bat: %.2f", _mcel.v_bat);
+    printf("t_bat: %.2f", _mcel.t_bat);
+    printf("t_pcb: %.2f", _mcel.t_pcb);
+    printf("state: %u", _mcel.status);
+
+    printf("C[1]: %.2f", _mcel.cell_volt(0));
+    printf("C[2]: %.2f", _mcel.cell_volt(1));
+    printf("C[3]: %.2f", _mcel.cell_volt(2));
+    printf("C[4]: %.2f", _mcel.cell_volt(3));
+
+    printf("C[5]: %.2f", _mcel.cell_volt(4));
+    printf("C[6]: %.2f", _mcel.cell_volt(5));
+    printf("C[7]: %.2f", _mcel.cell_volt(6));
+    //printf("C[8]: %.2f", _mcel.cell_volt(7));
+
+    //printf("C[9] %.2f", _mcel.cell_volt(8));
+    //printf("C[10] %.2f", _mcel.cell_volt(9));
+    //printf("C[11] %.2f", _mcel.cell_volt(10));
+    //printf("C[12] %.2f", _mcel.cell_volt(11));
+}
+
+//======================================================================================
 // CAN MESSAGE ROUTER - MAIN SERIAL HANDLER
 //======================================================================================
 
@@ -666,6 +756,14 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
 
     // Process UVHPU Power Management (CAN ID 0xFFFF)
     switch (can_id & 0xFFFF) {
+    case MCELL_PACK1:
+    case MCELL_PACK2:
+    case MCELL_PACK3:
+    case MCELL_PACK4: {
+        //printf("mcell %x", can_id);
+        processMCELLPackage(can_id, can_data);
+        break;
+    }
     case UVHPU_PACK1:
     case UVHPU_PACK2:
     case UVHPU_PACK3:
