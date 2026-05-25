@@ -20,9 +20,15 @@ using m_vesc_gen_curr_in = Mandala<mandala::sns::env::gen::current>;
 using m_vesc_gen_motor_temp = Mandala<mandala::sns::env::gen::temp>;
 using m_vesc_gen_fet_temp = Mandala<mandala::est::env::usr::u12>;
 
-//Uvhpy
-using m_uvhpy_status = Mandala<mandala::est::env::usrc::c2>;
-using m_uvhpy_ibat_filt = Mandala<mandala::est::env::usrf::f1>;
+//Uvhpu
+using m_uvhpu_vbat = Mandala<mandala::est::env::usr::u13>;
+using m_uvhpu_vbat_filt = Mandala<mandala::est::env::usr::u14>;
+using m_uvhpu_pbat = Mandala<mandala::est::env::usr::u15>;
+using m_uvhpu_status = Mandala<mandala::est::env::usrc::c2>;
+using m_uvhpu_ibat_filt = Mandala<mandala::est::env::usrf::f1>;
+using m_uvhpu_cbat = Mandala<mandala::est::env::usrf::f10>;
+using m_uvhpu_ebat = Mandala<mandala::est::env::usrf::f11>;
+using m_uvhpu_ibat = Mandala<mandala::est::env::usrf::f12>;
 
 //Engine
 using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
@@ -317,6 +323,9 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
         _uvhpu.MSG1.vbat = (float) unpackInt16(data, 0) / 100.f;
         memcpy(&_uvhpu.MSG1.ibat, data + 2, 4);
         _uvhpu.MSG1.imon = (float) unpackInt16(data, 6) / 100.f;
+
+        m_uvhpu_vbat::publish(_uvhpu.MSG1.vbat);
+        m_uvhpu_ibat::publish(_uvhpu.MSG1.ibat);
         break;
     }
     case UVHPU_PACK2: {
@@ -325,11 +334,14 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
         _uvhpu.MSG2.pbat = (float) unpackInt16(data, 4);
         _uvhpu.MSG2.status = data[7];
 
-        m_uvhpy_status::publish(_uvhpu.MSG2.status);
+        m_uvhpu_status::publish(_uvhpu.MSG2.status);
+        m_uvhpu_pbat::publish(_uvhpu.MSG2.pbat);
         break;
     }
     case UVHPU_PACK3: {
         memcpy(&_uvhpu.MSG3.cbat, data, 8);
+        m_uvhpu_cbat::publish(_uvhpu.MSG3.cbat);
+        m_uvhpu_ebat::publish(_uvhpu.MSG3.ebat);
         break;
     }
     case UVHPU_PACK4: {
@@ -338,7 +350,8 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
     }
     case UVHPU_PACK5: {
         memcpy(&_uvhpu.MSG5.ibat_filt, data, 8);
-        m_uvhpy_ibat_filt::publish(_uvhpu.MSG5.ibat_filt);
+        m_uvhpu_ibat_filt::publish(_uvhpu.MSG5.ibat_filt);
+        m_uvhpu_vbat_filt::publish(_uvhpu.MSG5.vbat_filt);
         break;
     }
     case UVHPU_PACK6: {
