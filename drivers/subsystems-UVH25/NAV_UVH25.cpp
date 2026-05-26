@@ -117,8 +117,8 @@ using m_eng_rpm = Mandala<mandala::sns::env::eng::rpm>;
 using m_mcell_vbat = Mandala<mandala::est::env::usrf::f1>;
 using m_mcell_tpcb = Mandala<mandala::est::env::usrf::f2>;
 using m_mcell_tbat = Mandala<mandala::est::env::usrf::f3>;
-//vcl_max = Mandala<mandala::est::env::usrf::f4>;
-//vcl_min = Mandala<mandala::est::env::usrf::f5>;
+using m_mcell_vcl_max = Mandala<mandala::est::env::usrf::f4>;
+using m_mcell_vcl_min = Mandala<mandala::est::env::usrf::f5>;
 using m_mcell_status = Mandala<mandala::est::env::usrc::c3>;
 
 // Altitude (AGL)
@@ -664,6 +664,28 @@ EXPORT void on_main()
     m_eng_volt::publish((float) esc_data.voltage);
     m_eng_current::publish((float) esc_data.current);
     m_eng_rpm::publish((uint32_t) esc_data.rpm);
+
+    // Calculate min and max cell voltages from MCELL data
+    float vcl_max = -1.0f;
+    float vcl_min = 1000.0f;
+
+    for (uint8_t i = 0; i < 12; i++) {
+        float cell_voltage = _mcel.cell_volt(i);
+        if (cell_voltage > 0) { // Only consider valid readings
+            if (cell_voltage > vcl_max) {
+                vcl_max = cell_voltage;
+            }
+            if (cell_voltage < vcl_min) {
+                vcl_min = cell_voltage;
+            }
+        }
+    }
+
+    // Publish min/max values if valid readings exist
+    if (vcl_max > 0 && vcl_min < 1000.0f) {
+        m_mcell_vcl_max::publish(vcl_max);
+        m_mcell_vcl_min::publish(vcl_min);
+    }
 
     //RPM anti-stuck logic: if RPM is the same for a long time and less than 500, set it to 0
     float rpm_main = m_rpm::value();
