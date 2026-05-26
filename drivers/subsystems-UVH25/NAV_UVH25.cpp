@@ -94,11 +94,11 @@ using m_vesc_tail_current = Mandala<mandala::est::env::usr::u6>;
 using m_vesc_tail_duty = Mandala<mandala::est::env::usr::u7>;
 using m_vesc_tail_temp_fet = Mandala<mandala::est::env::usr::u8>;
 using m_vesc_tail_temp_motor = Mandala<mandala::est::env::usr::u9>;
-using m_vesc_tail_curr_in = Mandala<mandala::est::env::usr::u11>;
+using m_vesc_tail_curr_in = Mandala<mandala::est::env::usr::u10>;
 
 // UVH Power Management Unit
-using m_uvhpy_status = Mandala<mandala::est::env::usrc::c5>;
-using m_uvhpy_ibat_filt = Mandala<mandala::est::env::usrf::f1>;
+using m_uvhpy_status = Mandala<mandala::est::env::usrc::c1>;
+//using m_uvhpy_ibat_filt = Mandala<mandala::est::env::usrf::f1>;
 
 // Engine Parameters
 using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
@@ -110,11 +110,11 @@ using m_eng_rpm = Mandala<mandala::sns::env::eng::rpm>;
 
 // Mcell
 using m_mcell_vbat = Mandala<mandala::est::env::usrf::f1>;
-using m_mcell_tbat = Mandala<mandala::est::env::usrf::f3>;
-using m_mcell_status = Mandala<mandala::est::env::usrc::c3>;
 using m_mcell_tpcb = Mandala<mandala::est::env::usrf::f2>;
-//vcl_min = Mandala<mandala::est::env::usrf::f5>;
+using m_mcell_tbat = Mandala<mandala::est::env::usrf::f3>;
 //vcl_max = Mandala<mandala::est::env::usrf::f4>;
+//vcl_min = Mandala<mandala::est::env::usrf::f5>;
+using m_mcell_status = Mandala<mandala::est::env::usrc::c3>;
 
 // Altitude (AGL)
 using m_agl = Mandala<mandala::sns::nav::agl::radio>;
@@ -122,7 +122,7 @@ using m_agl = Mandala<mandala::sns::nav::agl::radio>;
 //ERS
 using m_ERS_block = Mandala<mandala::sns::env::ers::block>;
 using m_ERS_launch = Mandala<mandala::ctr::env::ers::launch>;
-using m_pyro_U = Mandala<mandala::est::env::usrf::f5>;
+using m_pyro_U = Mandala<mandala::est::env::usrf::f6>;
 using m_squib_U = Mandala<mandala::est::env::usr::u3>;
 using m_ERS_fire = Mandala<mandala::est::env::usrb::b1>;
 using m_ERS_charge = Mandala<mandala::est::env::usrb::b2>;
@@ -485,7 +485,7 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
     }
     case UVHPU_PACK5: {
         memcpy(&_uvhpu.MSG5.ibat_filt, data, 8);
-        m_uvhpy_ibat_filt::publish(_uvhpu.MSG5.ibat_filt);
+        //m_uvhpy_ibat_filt::publish(_uvhpu.MSG5.ibat_filt);
         break;
     }
     case UVHPU_PACK6: {
