@@ -64,6 +64,9 @@ const uint8_t PACK_SIZE_ESC{10};
 #define MCELL_PACK2 MCELL_ID + 2
 #define MCELL_PACK3 MCELL_ID + 3
 #define MCELL_PACK4 MCELL_ID + 4
+#define MCELL_PACK5 MCELL_ID + 5
+#define MCELL_PACK6 MCELL_ID + 6
+#define MCELL_PACK7 MCELL_ID + 7
 
 // Altitude (AGL) Sensor
 #define AGL_CAN_ID 0x00090002
@@ -106,12 +109,12 @@ using m_eng_current = Mandala<mandala::sns::env::eng::current>;
 using m_eng_rpm = Mandala<mandala::sns::env::eng::rpm>;
 
 // Mcell
-using m_mcel_vbat = Mandala<mandala::sns::env::bat::voltage>;
-using m_mcel_tbat = Mandala<mandala::sns::env::bat::temp>;
-using m_mcel_status = Mandala<mandala::est::env::usrc::c1>;
-//using m_cell_tpcb = Mandala<
-//vcl_min
-//vcl_max
+using m_mcell_vbat = Mandala<mandala::est::env::usrf::f1>;
+using m_mcell_tbat = Mandala<mandala::est::env::usrf::f3>;
+using m_mcell_status = Mandala<mandala::est::env::usrc::c3>;
+using m_mcell_tpcb = Mandala<mandala::est::env::usrf::f2>;
+//vcl_min = Mandala<mandala::est::env::usrf::f5>;
+//vcl_max = Mandala<mandala::est::env::usrf::f4>;
 
 // Altitude (AGL)
 using m_agl = Mandala<mandala::sns::nav::agl::radio>;
@@ -352,9 +355,10 @@ void processMCELLPackage(const uint32_t &can_id, const uint8_t *data)
         _mcel.t_pcb = (float) unpackInt16(data, 4) / 100.f;
         _mcel.status = data[7];
 
-        m_mcel_vbat::publish(_mcel.v_bat);
-        m_mcel_tbat::publish(_mcel.t_bat);
-        m_mcel_status::publish((uint32_t) _mcel.status);
+        m_mcell_vbat::publish(_mcel.v_bat);
+        m_mcell_tbat::publish(_mcel.t_bat);
+        m_mcell_status::publish((uint32_t) _mcel.status);
+        m_mcell_tpcb::publish(_mcel.t_pcb);
         break;
     }
     case MCELL_PACK2: {
@@ -367,6 +371,18 @@ void processMCELLPackage(const uint32_t &can_id, const uint8_t *data)
     }
     case MCELL_PACK4: {
         memcpy(_mcel.cell + 8, data, 8);
+        break;
+    }
+    case MCELL_PACK5: {
+        memcpy(_mcel.cell + 12, data, 8);
+        break;
+    }
+    case MCELL_PACK6: {
+        memcpy(_mcel.cell + 16, data, 8);
+        break;
+    }
+    case MCELL_PACK7: {
+        memcpy(_mcel.cell + 20, data, 8);
         break;
     }
     }
@@ -703,12 +719,12 @@ EXPORT void mcell()
     printf("C[5]: %.2f", _mcel.cell_volt(4));
     printf("C[6]: %.2f", _mcel.cell_volt(5));
     printf("C[7]: %.2f", _mcel.cell_volt(6));
-    //printf("C[8]: %.2f", _mcel.cell_volt(7));
+    printf("C[8]: %.2f", _mcel.cell_volt(7));
 
-    //printf("C[9] %.2f", _mcel.cell_volt(8));
-    //printf("C[10] %.2f", _mcel.cell_volt(9));
-    //printf("C[11] %.2f", _mcel.cell_volt(10));
-    //printf("C[12] %.2f", _mcel.cell_volt(11));
+    printf("C[9] %.2f", _mcel.cell_volt(8));
+    printf("C[10] %.2f", _mcel.cell_volt(9));
+    printf("C[11] %.2f", _mcel.cell_volt(10));
+    printf("C[12] %.2f", _mcel.cell_volt(11));
 }
 
 //======================================================================================
@@ -759,7 +775,10 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
     case MCELL_PACK1:
     case MCELL_PACK2:
     case MCELL_PACK3:
-    case MCELL_PACK4: {
+    case MCELL_PACK4:
+    case MCELL_PACK5:
+    case MCELL_PACK6:
+    case MCELL_PACK7: {
         //printf("mcell %x", can_id);
         processMCELLPackage(can_id, can_data);
         break;
