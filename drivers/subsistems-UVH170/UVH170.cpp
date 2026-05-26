@@ -12,23 +12,24 @@ using m_vesc_tail_current = Mandala<mandala::est::env::usr::u6>;
 using m_vesc_tail_duty = Mandala<mandala::est::env::usr::u7>;
 using m_vesc_tail_temp_fet = Mandala<mandala::est::env::usr::u8>;
 using m_vesc_tail_temp_motor = Mandala<mandala::est::env::usr::u9>;
-using m_vesc_tail_curr_in = Mandala<mandala::est::env::usr::u11>;
+using m_vesc_tail_curr_in = Mandala<mandala::est::env::usr::u2>;
 
 //Vesc gen
 using m_vesc_gen_rpm = Mandala<mandala::sns::env::gen::rpm>;
 using m_vesc_gen_curr_in = Mandala<mandala::sns::env::gen::current>;
 using m_vesc_gen_motor_temp = Mandala<mandala::sns::env::gen::temp>;
-using m_vesc_gen_fet_temp = Mandala<mandala::est::env::usr::u12>;
+using m_vesc_gen_fet_temp = Mandala<mandala::est::env::usr::u14>;
 
 //Uvhpu
-using m_uvhpu_vbat = Mandala<mandala::est::env::usr::u13>;
-using m_uvhpu_vbat_filt = Mandala<mandala::est::env::usr::u14>;
-using m_uvhpu_pbat = Mandala<mandala::est::env::usr::u15>;
-using m_uvhpu_status = Mandala<mandala::est::env::usrc::c2>;
-using m_uvhpu_ibat_filt = Mandala<mandala::est::env::usrf::f1>;
-using m_uvhpu_cbat = Mandala<mandala::est::env::usrf::f10>;
-using m_uvhpu_ebat = Mandala<mandala::est::env::usrf::f11>;
-using m_uvhpu_ibat = Mandala<mandala::est::env::usrf::f12>;
+using m_uvhpu_vbat = Mandala<mandala::sns::env::bat::voltage>;
+//using m_uvhpu_vbat_filt = Mandala<mandala::est::env::usr::u14>;
+using m_uvhpu_pbat = Mandala<mandala::est::env::usr::u13>;
+using m_uvhpu_status = Mandala<mandala::est::env::usrc::c1>;
+//using m_uvhpu_ibat_filt = Mandala<mandala::est::env::usrf::f1>;
+using m_uvhpu_cbat = Mandala<mandala::est::env::usr::u12>;
+using m_uvhpu_ebat = Mandala<mandala::est::env::usr::u11>;
+using m_uvhpu_ibat = Mandala<mandala::sns::env::bat::current>;
+using m_uvhpu_tbat = Mandala<mandala::sns::env::bat::temp>;
 
 //Engine
 using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
@@ -37,7 +38,7 @@ using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
 using m_rpm = Mandala<mandala::est::env::usr::u4>;
 
 // AGL
-using m_agl = Mandala<mandala::est::env::usr::u1>;
+using m_agl = Mandala<mandala::sns::nav::agl::radio>;
 
 //fuel pressure ADC
 using m_fps_adc = Mandala<mandala::est::env::usr::u3>;
@@ -46,7 +47,7 @@ using m_fps = Mandala<mandala::sns::env::fuel::ps>;
 // DUT
 using m_fuel_p = Mandala<mandala::sns::env::fuel::level>;
 using m_fuel_l = Mandala<mandala::est::env::usrf::f2>;
-using m_warn = Mandala<mandala::est::env::usrc::c1>;
+using m_warn = Mandala<mandala::est::env::usrc::c3>;
 
 const uint16_t TASK_FUEL_MS{500}; //msec
 
@@ -336,6 +337,7 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
 
         m_uvhpu_status::publish(_uvhpu.MSG2.status);
         m_uvhpu_pbat::publish(_uvhpu.MSG2.pbat);
+        m_uvhpu_tbat::publish(_uvhpu.MSG2.tbat);
         break;
     }
     case UVHPU_PACK3: {
@@ -350,8 +352,8 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
     }
     case UVHPU_PACK5: {
         memcpy(&_uvhpu.MSG5.ibat_filt, data, 8);
-        m_uvhpu_ibat_filt::publish(_uvhpu.MSG5.ibat_filt);
-        m_uvhpu_vbat_filt::publish(_uvhpu.MSG5.vbat_filt);
+        //m_uvhpu_ibat_filt::publish(_uvhpu.MSG5.ibat_filt);
+        //m_uvhpu_vbat_filt::publish(_uvhpu.MSG5.vbat_filt);
         break;
     }
     case UVHPU_PACK6: {
