@@ -107,7 +107,7 @@ using m_uvhpu_tbat = Mandala<mandala::sns::env::bat::temp>;
 
 // Engine Parameters
 using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
-using m_rpm = Mandala<mandala::est::env::usr::u4>;
+using m_rotor_rpm = Mandala<mandala::sns::env::gbox::rpm>;
 using m_eng_temp = Mandala<mandala::sns::env::eng::temp>;
 using m_eng_volt = Mandala<mandala::sns::env::eng::voltage>;
 using m_eng_current = Mandala<mandala::sns::env::eng::current>;
@@ -273,7 +273,7 @@ int main()
     task("uvhpu"); // GCS with terminal command `vmexec("uvhpu")`
 
     m_eng_ctr();
-    m_rpm();
+    m_rotor_rpm();
 
     m_squib_U();
     m_pyro_U();
@@ -688,11 +688,11 @@ EXPORT void on_main()
     }
 
     //RPM anti-stuck logic: if RPM is the same for a long time and less than 500, set it to 0
-    float rpm_main = m_rpm::value();
+    float rpm_main = m_rotor_rpm::value();
     if (rpm_main == rpm_prev) {
         same_counter++;
         if (same_counter >= SAME_LIMIT && rpm_main < MIN_RPM_CHECK) {
-            m_rpm::publish(0.0f);
+            m_rotor_rpm::publish(0.0f);
             same_counter = 0;
         }
     } else {
