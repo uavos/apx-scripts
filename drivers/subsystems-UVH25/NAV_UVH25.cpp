@@ -104,6 +104,8 @@ using m_uvhpu_cbat = Mandala<mandala::est::env::usr::u12>;
 using m_uvhpu_ebat = Mandala<mandala::est::env::usr::u11>;
 using m_uvhpu_ibat = Mandala<mandala::sns::env::bat::current>;
 using m_uvhpu_tbat = Mandala<mandala::sns::env::bat::temp>;
+using m_uvhpu_hold = Mandala<mandala::est::env::usrc::c2>;
+using m_procedure = Mandala<mandala::cmd::nav::proc::mode>;
 
 // Engine Parameters
 using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
@@ -274,6 +276,7 @@ int main()
 
     m_eng_ctr();
     m_rotor_rpm();
+    m_procedure();
 
     m_squib_U();
     m_pyro_U();
@@ -698,6 +701,13 @@ EXPORT void on_main()
     } else {
         rpm_prev = rpm_main;
         same_counter = 0;
+    }
+
+    //pu hold
+    if (m_procedure::value() == (uint32_t) mandala::proc_mode_TAXI) { //only in taxi mode
+        m_uvhpu_hold::publish(false);
+    } else {
+        m_uvhpu_hold::publish(true);
     }
 }
 
