@@ -35,7 +35,7 @@ using m_procedure = Mandala<mandala::cmd::nav::proc::mode>;
 using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
 using m_sw_starter = Mandala<mandala::ctr::nav::eng::starter>;
 using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
-using m_rpm = Mandala<mandala::est::env::usr::u4>;
+using m_rotor_rpm = Mandala<mandala::sns::env::gbox::rpm>;
 
 // AGL
 using m_agl = Mandala<mandala::sns::nav::agl::radio>;
@@ -202,7 +202,7 @@ int main()
     m_sw_starter();
     m_eng_ctr();
     m_fps_adc();
-    m_rpm();
+    m_rotor_rpm();
     m_procedure();
 
     receive(PORT_ID, "on_serial");
@@ -241,12 +241,12 @@ EXPORT void on_main()
     m_fps::publish(fuel_pressure);
 
     //RPM anti-stuck logic: if RPM is the same for a long time and less than 500, set it to 0
-    float rpm_main = m_rpm::value();
+    float rpm_main = m_rotor_rpm::value();
     if (rpm_main == rpm_prev) {
         same_counter++;
         if (same_counter >= SAME_LIMIT && rpm_main < 500.f) {
-            m_rpm::publish(0.0f);
-            same_counter = 0; // сбрасываем, чтобы не зациклиться
+            m_rotor_rpm::publish(0.0f);
+            same_counter = 0;
         }
     } else {
         rpm_prev = rpm_main;
