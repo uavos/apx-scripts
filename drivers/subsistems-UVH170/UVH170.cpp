@@ -22,14 +22,14 @@ using m_vesc_gen_fet_temp = Mandala<mandala::est::env::usr::u14>;
 
 //Uvhpu
 using m_uvhpu_vbat = Mandala<mandala::sns::env::bat::voltage>;
-//using m_uvhpu_vbat_filt = Mandala<mandala::est::env::usr::u14>;
 using m_uvhpu_pbat = Mandala<mandala::est::env::usr::u13>;
 using m_uvhpu_status = Mandala<mandala::est::env::usrc::c1>;
-//using m_uvhpu_ibat_filt = Mandala<mandala::est::env::usrf::f1>;
 using m_uvhpu_cbat = Mandala<mandala::est::env::usr::u12>;
 using m_uvhpu_ebat = Mandala<mandala::est::env::usr::u11>;
 using m_uvhpu_ibat = Mandala<mandala::sns::env::bat::current>;
 using m_uvhpu_tbat = Mandala<mandala::sns::env::bat::temp>;
+using m_uvhpu_hold = Mandala<mandala::est::env::usrc::c2>;
+using m_procedure = Mandala<mandala::cmd::nav::proc::mode>;
 
 //Engine
 using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
@@ -203,6 +203,7 @@ int main()
     m_eng_ctr();
     m_fps_adc();
     m_rpm();
+    m_procedure();
 
     receive(PORT_ID, "on_serial");
     receive(PORT_ID_FUEL, "on_fuel_serial");
@@ -250,6 +251,13 @@ EXPORT void on_main()
     } else {
         rpm_prev = rpm_main;
         same_counter = 0;
+    }
+
+    //pu hold
+    if (m_procedure::value() == (uint32_t) mandala::proc_mode_TAXI) { //only in taxi mode
+        m_uvhpu_hold::publish(false);
+    } else {
+        m_uvhpu_hold::publish(true);
     }
 }
 
