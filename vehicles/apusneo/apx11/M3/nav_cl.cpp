@@ -8,16 +8,16 @@ constexpr const uint16_t TASK_HEATER_MS{2000};
 //----------------------Temperature-------------------------
 constexpr const uint16_t START_HEATER{10};
 
-using m_sw_manual = Mandala<mandala::ctr::env::sw::sw15>; //heater manual
-using m_status_heater = Mandala<mandala::est::env::usrc::c15>;
+using m_sw1 = Mandala<mandala::ctr::env::sw::sw1>; //nav-l
+using m_sw2 = Mandala<mandala::ctr::env::sw::sw2>; //nav-cl
+using m_sw3 = Mandala<mandala::ctr::env::sw::sw3>; //lan
+using m_sw4 = Mandala<mandala::ctr::env::sw::sw4>; //ifc-cr
+using m_sw5 = Mandala<mandala::ctr::env::sw::sw5>; //nav-r
+using m_sw6 = Mandala<mandala::ctr::env::sw::sw6>; //fts
+using m_sw7 = Mandala<mandala::ctr::env::sw::sw7>; //adsb-tx
 
-using m_sw1 = Mandala<mandala::ctr::env::sw::sw1>;
-using m_sw2 = Mandala<mandala::ctr::env::sw::sw2>; //heater for main nav off/on
-using m_sw3 = Mandala<mandala::ctr::env::sw::sw3>;
-using m_sw4 = Mandala<mandala::ctr::env::sw::sw4>;
-using m_sw5 = Mandala<mandala::ctr::env::sw::sw5>;
-using m_sw6 = Mandala<mandala::ctr::env::sw::sw6>;
-using m_sw7 = Mandala<mandala::ctr::env::sw::sw7>;
+using m_sw_manual = Mandala<mandala::ctr::env::sw::sw8>; //heater manual
+using m_status_heater = Mandala<mandala::est::env::usrc::c8>;
 
 using m_sns_temp = Mandala<mandala::sns::nav::gyro::temp>; //gyro temp
 
@@ -45,6 +45,8 @@ int main()
     m_sns_temp();
 
     m_sw_manual();
+
+    m_mode();
 
     m_ltt();
     m_health();

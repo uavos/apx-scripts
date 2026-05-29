@@ -5,7 +5,7 @@
 
 #define EQUAL_TANKS
 
-static constexpr const port_id_t port_fuel_id{11};
+static constexpr const port_id_t port_fuel_id{12};
 
 const uint16_t TASK_MAIN_MS{100}; //msec
 const uint16_t TASK_ERS_MS{100};  //msec
@@ -151,6 +151,8 @@ bool g_lowAltLockout{false};
 bool g_AttAndVSpeedLockout{false};
 bool g_onERS2Lockout{false};
 bool g_onERS3Lockout{false};
+
+bool g_targetMode{false};
 
 int main()
 {
@@ -320,6 +322,15 @@ EXPORT void on_ers()
     }
 
     if ((uint32_t) m_mode::value() == mandala::proc_mode_UAV && (uint32_t) m_stage::value() == 2) {
+        g_targetMode = true;
+        return;
+    }
+
+    if (g_targetMode && m_vspeed::value() > 0) {
+        g_targetMode = false;
+    }
+
+    if (g_targetMode) {
         return;
     }
 
@@ -335,6 +346,7 @@ EXPORT void on_ers()
         g_AttAndVSpeedLockout = false;
         g_onERS2Lockout = false;
         g_onERS3Lockout = false;
+        g_targetMode = false;
 
         m_air::publish(true);
         pump_stage = 1; //restart fuel algorithm after launch
