@@ -42,6 +42,7 @@ const uint8_t PACK_SIZE_ESC{10};
 #define STATUS_MSG_3 0x0F
 #define STATUS_MSG_4 0x10
 #define STATUS_MSG_5 0x1B
+#define ERPM_DIVIDER 14.f //amount of magnets divided by 2
 
 // VESC CAN Packets
 #define CAN_PACKET_SET_CURRENT 1
@@ -802,7 +803,7 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
         uint16_t msg_id = (can_id >> 8) & 0xFF;
         processVESCPackage(msg_id, can_data, &tail_data);
 
-        m_vesc_tail_rpm::publish((float) tail_data.rpm / 11);
+        m_vesc_tail_rpm::publish((float) tail_data.rpm / ERPM_DIVIDER);
         m_vesc_tail_current::publish(tail_data.current);
         m_vesc_tail_duty::publish(tail_data.duty);
         m_vesc_tail_temp_fet::publish(tail_data.temp_fet);
