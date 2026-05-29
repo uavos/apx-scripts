@@ -3,7 +3,8 @@
 
 #include <apx.h>
 
-#define EQUAL_TANKS
+//#define FUEL_SIM
+#define SIM_SPEED 0.02f
 
 static constexpr const port_id_t port_fuel_id{12};
 
@@ -18,25 +19,25 @@ const uint8_t ADR_FUEL_SENS3{87}; //77
 
 const uint8_t MSG_FUEL_SIZE{9}; //FUEL
 
-#ifdef EQUAL_TANKS
 const float V_MAX1{16.7f}; //liters
 const float V_MAX2{16.7f}; //liters
 const float V_MAX3{16.7f}; //liters
 
-const float CRITICAL_LOW{7.0f};  //7% = 1.1l
-const float TANK_1_POINT{13.0f}; //13% = 2l
-const float TANK_2_POINT{25.0f}; //25% = 3.9l
-const float TANK_3_POINT{51.0f}; //51% = 8l
-#else
-const float V_MAX1{17.0f}; //liters
-const float V_MAX2{18.3f}; //liters
-const float V_MAX3{24.6f}; //liters
+const float CRITICAL_LOW{7.0f};            //%, reaching this level considered empty tank
+const float TANK_2_KEEPFULL{95.f};         //%, if below, start pumping fuel in tank 2
+const float TANK_2_POINT{45.f};            //%, starting next stage when reaching this point
+const float TANK_12_RATIO{2.f};            //ratio of fuel to keep between tank 1 and 2
+const float TANK_13_MAX_DIFF{20.f};        //%, max allowed difference between tank 1 and 3 levels
+const float TANK_13_MIN_DIFF{10.0f};       //%, min required difference between tank 1 and 3 levels
+const float TANK_13_MAX_DIFF_LEVELS{50.f}; //%, max diff between tank 1 and 3 at 50% average level
+const float TANK_13_MIN_DIFF_LEVELS{20.f}; //%, min diff between tank 1 and 3 at 20% average level
 
-const float CRITICAL_LOW{7.0f};  //7% = 1.1l
-const float TANK_1_POINT{20.0f}; //20% = 3.4l
-const float TANK_2_POINT{25.0f}; //25% = 4.5l
-const float TANK_3_POINT{60.0f}; //60% = 14.7l
-#endif
+const float k1 = (TANK_13_MAX_DIFF - 0.f) / (TANK_13_MAX_DIFF_LEVELS - 100.f); //0 is a start diff
+const float b1 = 0.f - k1 * 100.f;
+
+const float k2 = (TANK_13_MIN_DIFF - TANK_13_MAX_DIFF)
+                 / (TANK_13_MIN_DIFF_LEVELS - TANK_13_MAX_DIFF_LEVELS);
+const float b2 = TANK_13_MAX_DIFF - k2 * TANK_13_MAX_DIFF_LEVELS;
 
 uint8_t snd_fuel_buf[MSG_FUEL_SIZE] = {};
 
@@ -47,9 +48,12 @@ uint32_t startTimerPumpON;
 
 uint8_t pump_stage{1}; //default stage
 
-const uint8_t TIME_SA{5};     //sec
-const uint8_t DELAY_PUMP{15}; //sec between different pumps
+const uint8_t TIME_SA{5};        //sec
+const uint8_t DELAY_PUMP{15};    //pump works for 15 sec before switching to another
+const uint8_t TIME_TO_EMPTY{60}; //sec. Time to drain tank from critical to empty level
 
+bool tank1_critical{false};
+bool tank3_critical{false};
 bool fuel_mc_old{false};
 bool ignition_old{false};
 
@@ -96,6 +100,10 @@ using m_pump3 = Mandala<mandala::ctr::env::sw::sw7>;
 using m_warn1 = Mandala<mandala::est::env::usrb::b5>;
 using m_warn2 = Mandala<mandala::est::env::usrb::b6>;
 using m_warn3 = Mandala<mandala::est::env::usrb::b7>;
+
+//using m_error1 = Mandala<mandala::est::env::usrc::c5>;
+//using m_error2 = Mandala<mandala::est::env::usrc::c6>;
+//using m_error3 = Mandala<mandala::est::env::usrc::c7>;
 
 using m_fuel_mc = Mandala<mandala::ctr::env::sw::sw8>; //manual control
 
@@ -366,7 +374,8 @@ EXPORT void on_ers()
     const bool is_rp = checkRollAndPitch();
     const bool is_vspd = checkVSpeed();
 
-    const bool ers = (m_air_val && !g_AttAndVSpeedLockout && (is_rp || is_vspd)) || checkTakeOFFSafety();
+    const bool ers = (m_air_val && !g_AttAndVSpeedLockout && (is_rp || is_vspd))
+                     || checkTakeOFFSafety();
 
     if (ers) {
         g_AttAndVSpeedLockout = true;
@@ -396,7 +405,8 @@ EXPORT void on_ers()
         //release parachute
         const bool lvs_release = checkVSpeedAndAltitudeRelease();
         const bool gmax_release = checkGForceRelease();
-        if (g_onERS2Lockout && !g_onERS3Lockout && (lvs_release || gmax_release) && (altitude < ERS3_ALT)) {
+        if (g_onERS2Lockout && !g_onERS3Lockout && (lvs_release || gmax_release)
+            && (altitude < ERS3_ALT)) {
             g_onERS3Lockout = true;
             m_ers3::publish(true);
             printf("VM:ERS3 ok\n");
@@ -456,15 +466,24 @@ void turn_on_all_pumps()
     m_pump3::publish(true);
 }
 
+void turn_off_pump_1()
+{
+    m_pump1::publish(false);
+}
+
+void turn_off_pump_3()
+{
+    m_pump3::publish(false);
+}
+
 void turn_on_pump_1()
 {
     if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
-        if ((bool) m_pump2::value() || (bool) m_pump3::value()) {
-            m_pump2::publish(false);
-            m_pump3::publish(false);
+        if ((bool) m_pump3::value()) { //if pump 3 is on, turn it off before turning on pump 1
+            turn_off_pump_3();
             return;
         }
-        if (!(bool) m_pump1::value()) {
+        if (!(bool) m_pump1::value()) { //if pump 1 is not on, turn it on and start timer
             m_pump1::publish(true);
             startTimerPumpON = time_ms();
         }
@@ -473,101 +492,114 @@ void turn_on_pump_1()
 
 void turn_on_pump_2()
 {
-    if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
-        if ((bool) m_pump1::value() || (bool) m_pump3::value()) {
-            m_pump1::publish(false);
-            m_pump3::publish(false);
-            return;
-        }
-        if (!(bool) m_pump2::value()) {
-            m_pump2::publish(true);
-            startTimerPumpON = time_ms();
-        }
-    }
+    m_pump2::publish(true);
 }
 
 void turn_on_pump_3()
 {
     if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
-        if ((bool) m_pump1::value() || (bool) m_pump2::value()) {
-            m_pump1::publish(false);
-            m_pump2::publish(false);
+        if ((bool) m_pump1::value()) { //if pump 1 is on, turn it off before turning on pump 3
+            turn_off_pump_1();
             return;
         }
-        if (!(bool) m_pump3::value()) {
+        if (!(bool) m_pump3::value()) { //if pump 3 is not on, turn it on and start timer
             m_pump3::publish(true);
             startTimerPumpON = time_ms();
         }
     }
 }
 
-void pump_stage_1() //get fuel from tank 3 until the point
-{
-    if (fuel[2].percent > TANK_3_POINT) {
-        turn_on_pump_3();
-    } else {
-        pump_stage = 2;
-        printf("fuel stage: 2");
-    }
-}
+void pump_stage_1() //keep tank 2 full, pumping from 1 and 3 according to required difference
+{                   // prioritize keeping more fuel in tank 1
+    if (fuel[1].percent < TANK_2_KEEPFULL) {
+        float avrg_t1t3 = (fuel[0].percent + fuel[2].percent) / 2.f;
 
-void pump_stage_2() //get fuel from tank 3 until empty and from 1 until the point
-{
-    if (fuel[0].percent > TANK_1_POINT) {
-        if (fuel[2].percent > CRITICAL_LOW) {
-            if (fuel[0].percent > (fuel[2].percent + 100 - TANK_3_POINT)) {
+        float req_diff = 0.0f;
+        bool valid = true;
+
+        if (avrg_t1t3 > TANK_13_MAX_DIFF_LEVELS) {
+            req_diff = k1 * avrg_t1t3 + b1;
+        } else if (avrg_t1t3 > TANK_13_MIN_DIFF_LEVELS) {
+            req_diff = k2 * avrg_t1t3 + b2;
+        } else {
+            valid = false;
+            pump_stage = 2; //if both 1 and 3 tanks are near 15%
+            printf("fuel stage: 2");
+            turn_off_pump_1(); //turn off pump 1
+        }
+
+        if (valid) {
+            //keep required difference between tank 1 and 3
+            if (fuel[0].percent - fuel[2].percent > req_diff) {
                 turn_on_pump_1();
             } else {
                 turn_on_pump_3();
             }
+        }
+    } else {
+        turn_off_pump_1(); //does this prevent pumps from working for 15 sec???
+        turn_off_pump_3();
+    }
+}
+
+void pump_stage_2() //leaving tank 1 with around 15%, pump from tank 3 until empty
+{
+    if (!tank3_critical) {
+        if (fuel[1].percent < TANK_2_KEEPFULL) { //if tank 2 is below 95%, pump fuel
+            turn_on_pump_3();
+        } else { //if tank 2 is full, turn off pumps and wait until fuel drops below 95% again
+            turn_off_pump_1();
+            turn_off_pump_3();
+        }
+
+        //if tank 3 near empty - start pump 3 for 1 minute to drain it for sure
+        if (fuel[2].percent < CRITICAL_LOW) {
+            tank3_critical = true;
+            //force restart pump3 and it's timer immediately
+            m_pump1::publish(false);
+            m_pump3::publish(true);
+            startTimerPumpON = time_ms();
+        }
+    } else if (time_ms() > startTimerPumpON + TIME_TO_EMPTY * 1000) {
+        pump_stage = 3;
+        printf("fuel stage: 3");
+        turn_off_pump_3();
+    }
+}
+
+void pump_stage_3() //leaving tank 1 with around 25%, pump from tank 2 until ~45%
+{                   //pump 2 works when engine works, so no need to turn it on specifically
+    if (fuel[1].percent < TANK_2_POINT) {
+        pump_stage = 4;
+        printf("fuel stage: 4");
+    }
+}
+
+void pump_stage_4() // pump from tank 1 and tank 2 with specific ratio
+{
+    if (!tank1_critical) {
+        if (fuel[1].percent > fuel[0].percent * TANK_12_RATIO) {
+            turn_off_pump_1();
         } else {
             turn_on_pump_1();
         }
-    } else {
-        pump_stage = 3;
-        printf("fuel stage: 3");
-    }
-}
 
-void pump_stage_3() //get fuel from tank 2 until specified points
-{
-    if (fuel[2].percent < CRITICAL_LOW) {
-        if (fuel[1].percent > TANK_2_POINT) {
-            turn_on_pump_2();
-        } else {
-            pump_stage = 4;
-            printf("fuel stage: 4");
+        if (fuel[0].percent < CRITICAL_LOW) {
+            tank1_critical = true;
+            //force restart pump1 and it's timer immediately
+            m_pump3::publish(false);
+            m_pump1::publish(true);
+            startTimerPumpON = time_ms();
         }
-    } else {
-        turn_on_pump_3();
-    }
-}
-
-void pump_stage_4() //get fuel from tank 1 and 2 until empty
-{
-    if (fuel[2].percent < CRITICAL_LOW) {
-        if (fuel[0].percent > CRITICAL_LOW) {
-            if (fuel[1].percent > CRITICAL_LOW) {
-                if (fuel[0].percent > fuel[1].percent) {
-                    turn_on_pump_1();
-                } else {
-                    turn_on_pump_2();
-                }
-            } else {
-                turn_on_pump_1();
-            }
-        } else if (fuel[1].percent > CRITICAL_LOW) {
-            turn_on_pump_2();
-        } else {
-            turn_on_all_pumps();
-        }
-    } else {
-        turn_on_pump_3();
+    } else if (time_ms() > startTimerPumpON + TIME_TO_EMPTY * 1000) {
+        turn_off_pump_1();
     }
 }
 
 void fuel_auto_control()
 {
+    turn_on_pump_2(); //keep pump2 on while engine is on
+
     switch (pump_stage) {
     case 1:
         pump_stage_1();
@@ -661,13 +693,20 @@ EXPORT void on_fuel_serial(const uint8_t *data, size_t size)
         return;
     }
 
+    //uint32_t error = data[3];
+    //if (error < 150) //error codes start from 150
+    //    error = 0;
+
     float fuel_percent = (float) (data[4] | (data[5] << 8)) / 10.f;
 
     if (data[1] == ADR_FUEL[0]) {
         fuel[0].set_percent(fuel_percent);
+        //m_error1::publish(error);
     } else if (data[1] == ADR_FUEL[1]) {
         fuel[1].set_percent(fuel_percent);
+        //m_error2::publish(error);
     } else if (data[1] == ADR_FUEL[2]) {
         fuel[2].set_percent(fuel_percent);
+        //m_error3::publish(error);
     }
 }
