@@ -68,7 +68,6 @@ const uint8_t PACK_SIZE_ESC{10};
 #define MCELL_PACK5 MCELL_ID + 5
 #define MCELL_PACK6 MCELL_ID + 6
 #define MCELL_PACK7 MCELL_ID + 7
-#define MCELL_PACK15 MCELL_ID + 15
 
 // Altitude (AGL) Sensor
 #define AGL_CAN_ID 0x00090002
@@ -396,17 +395,6 @@ void processMCELLPackage(const uint32_t &can_id, const uint8_t *data)
         memcpy(_mcel.cell + 20, data, 8);
         break;
     }
-    case MCELL_PACK15: {
-        float vmin;
-        float vmax;
-        memcpy(&vmin, data, 4);     //0-3 bytes min
-        memcpy(&vmax, data + 4, 4); //4-7 bytes max
-        m_mcell_vcl_min::publish(vmin);
-        m_mcell_vcl_max::publish(vmax);
-        float delta = vmax - vmin;
-        m_mcell_delta::publish(delta);
-        break;
-    }
     }
 }
 
@@ -681,6 +669,30 @@ EXPORT void on_main()
     m_eng_volt::publish((float) esc_data.voltage);
     m_eng_current::publish((float) esc_data.current);
     m_eng_rpm::publish((uint32_t) esc_data.rpm);
+
+    // Calculate min and max cell voltages from MCELL data
+    float vcl_max = -1.0f;
+    float vcl_min = 1000.0f;
+
+    for (uint8_t i = 0; i < 12; i++) {
+        float cell_voltage = _mcel.cell_volt(i);
+        if (cell_voltage > 0) { // Only consider valid readings
+            if (cell_voltage > vcl_max) {
+                vcl_max = cell_voltage;
+            }
+            if (cell_voltage < vcl_min) {
+                vcl_min = cell_voltage;
+            }
+        }
+    }
+
+    // Publish min/max values if valid readings exist
+    if (vcl_max > 0 && vcl_min < 1000.0f) {
+        m_mcell_vcl_max::publish(vcl_max);
+        m_mcell_vcl_min::publish(vcl_min);
+    }
+    float delta = vcl_max - vcl_min;
+    m_mcell_delta::publish(delta);
 
     //RPM anti-stuck logic: if RPM is the same for a long time and less than 500, set it to 0
     float rpm_main = m_rotor_rpm::value();
