@@ -1,6 +1,6 @@
 #include <apx.h>
 
-const uint8_t PORT_ID{33};
+const uint8_t PORT_ID{8};
 const uint8_t PACK_SIZE_CAN{12};
 const uint8_t TASK_ECU_MS{50};
 
