@@ -104,6 +104,7 @@ using m_ltt = Mandala<mandala::est::env::sys::ltt>;
 using m_health = Mandala<mandala::est::env::sys::health>;
 using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
 using m_stage = Mandala<mandala::cmd::nav::proc::stage>;
+using m_action = Mandala<mandala::cmd::nav::proc::action>;
 using m_geo_safety = Mandala<mandala::est::nav::geo::safe>;
 
 //ers
@@ -122,6 +123,18 @@ using m_vspeed = Mandala<mandala::est::nav::pos::vspeed>;
 using m_ax = Mandala<mandala::est::nav::acc::x>;
 using m_ay = Mandala<mandala::est::nav::acc::y>;
 using m_az = Mandala<mandala::est::nav::acc::z>;
+
+//drop
+bool proc_start{false};
+
+uint32_t uav_timer{};
+uint32_t next_timer{};
+
+bool on_uav{false};
+bool on_next{false};
+
+static constexpr const uint32_t UAV_TIMEOUT = 3000;
+static constexpr const uint32_t NEXT_TIMEOUT = 2000;
 
 //emergency parachute deployment
 static constexpr const float ERS_VDOWN{-30.f}; //[m/sec]
@@ -160,6 +173,9 @@ int main()
     schedule_periodic(task("on_ers"), TASK_ERS_MS);
     schedule_periodic(task("on_fuel"), TASK_FUEL_MS);
 
+    task("drop");
+    schedule_periodic(task("on_drop"), 1000);
+
     receive(port_fuel_id, "on_fuel_serial");
 
     //fuel
@@ -185,6 +201,7 @@ int main()
     m_health();
     m_mode();
     m_stage();
+    m_action();
     m_geo_safety();
 
     //ers
@@ -239,6 +256,44 @@ EXPORT void on_main()
         m_mode::publish((uint32_t) mandala::proc_mode_LANDING);
         printf("VM:Geofence critical\n");
     }
+}
+
+EXPORT void on_drop()
+{
+    if (!proc_start) {
+        return;
+    }
+
+    uint32_t now = time_ms();
+
+    if (!on_uav && now - uav_timer >= UAV_TIMEOUT) {
+        printf("UAV...\n");
+        m_mode::publish((uint32_t) mandala::proc_mode_UAV);
+        next_timer = now;
+        on_uav = true;
+        return;
+    }
+
+    if (!on_next && on_uav && now - next_timer >= NEXT_TIMEOUT) {
+        printf("Next...\n");
+        m_action::publish((uint32_t) mandala::proc_action_next);
+
+        on_next = true;
+        proc_start = false;
+    }
+}
+
+EXPORT void drop()
+{
+    printf("Start proc drop...\n");
+    on_uav = false;
+    on_next = false;
+
+    uint32_t now = time_ms();
+    uav_timer = now;
+    next_timer = now;
+
+    proc_start = true;
 }
 
 bool checkRollAndPitch()
