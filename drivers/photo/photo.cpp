@@ -47,7 +47,7 @@ int main()
     M_MC_COUNTER();
     M_ERROR_COUNTER();
 
-    task("on_main", TASK_MAIN_MS);
+    schedule_periodic(task("on_main"), TASK_MAIN_MS);
 
     printf("photo script ready...\n");
 
@@ -75,7 +75,8 @@ EXPORT void on_main()
     uint32_t releaseDelta = RELEASE_COUNTER - RELEASE_COUNTER_prev;
 
     if (mcDelta != releaseDelta) {
-        error_counter += (mcDelta > releaseDelta) ? (mcDelta - releaseDelta) : (releaseDelta - mcDelta);
+        error_counter += (mcDelta > releaseDelta) ? (mcDelta - releaseDelta)
+                                                  : (releaseDelta - mcDelta);
         M_ERROR_COUNTER::publish((float) error_counter);
     }
 
