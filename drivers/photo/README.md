@@ -6,11 +6,11 @@ to detect missed or spurious releases.
 
 ## Bus mapping
 
-Indices below are examples, remap as needed:
+`CAM_RELEASE` is a fixed Mandala field; the `usrb`/`usr` indices below are examples, remap as needed:
 
 | Variable | Mandala | Direction | Description |
 |---|---|---|---|
-| `CAM_RELEASE` | `est.usrb.b1` | in | camera release signal, high pulse lasts ~50ms |
+| `CAM_RELEASE` | `ctr.env.cam.shot` | in | camera release signal (`off`/`single`/`series`), pulses to `single` for ~50ms |
 | `MC_BIT0` | `est.usrb.b2` | in | counter microchip feedback, bit0 |
 | `MC_BIT1` | `est.usrb.b3` | in | counter microchip feedback, bit1 |
 | `MC_RESET` | `est.usrb.b4` | out | pulse 1 then 0 to reset the counter microchip |
@@ -20,8 +20,9 @@ Indices below are examples, remap as needed:
 
 ## Behavior
 
-`CAM_RELEASE` pulses high for only ~50ms, so the task polls at 100Hz (every 10ms) to reliably
-catch the edge. Every 0→1 transition increments `RELEASE_COUNTER`.
+`CAM_RELEASE` pulses to `single` for only ~50ms, so the task polls at 100Hz (every 10ms) to
+reliably catch the edge. Every `off`→`single` transition increments `RELEASE_COUNTER`; the
+`series` value is not otherwise handled by this script.
 
 The microchip counter (`MC_BIT0`/`MC_BIT1`) is a free-running 2-bit counter (`00`, `01`, `10`,
 `11`, `00`, ...) that ticks once per physical release it detects. After each `CAM_RELEASE` edge,

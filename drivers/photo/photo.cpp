@@ -5,7 +5,7 @@ constexpr const uint8_t TASK_MAIN_MS{10};
 constexpr const uint16_t CHECK_DELAY_MS{60};
 
 //inputs
-using CAM_RELEASE = Mandala<mandala::est::env::usrb::b1>;
+using CAM_RELEASE = Mandala<mandala::ctr::env::cam::shot>;
 using MC_BIT0 = Mandala<mandala::est::env::usrb::b2>;
 using MC_BIT1 = Mandala<mandala::est::env::usrb::b3>;
 
@@ -26,7 +26,7 @@ uint32_t RELEASE_COUNTER{};
 uint32_t error_counter{};
 uint8_t mc_counter{};
 
-bool m_camReleaseOld{};
+uint32_t m_camReleaseOld{mandala::cam_shot_off};
 
 State m_state{State::idle};
 uint32_t m_stateTime{};
@@ -55,8 +55,8 @@ EXPORT void on_main()
 {
     uint32_t now = time_ms();
 
-    bool camRelease = (bool) CAM_RELEASE::value();
-    if (camRelease && !m_camReleaseOld) {
+    uint32_t camRelease = (uint32_t) CAM_RELEASE::value();
+    if (camRelease == mandala::cam_shot_single && m_camReleaseOld == mandala::cam_shot_off) {
         RELEASE_COUNTER++;
         M_RELEASE_COUNTER::publish((float) RELEASE_COUNTER);
 
