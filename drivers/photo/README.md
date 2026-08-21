@@ -1,10 +1,25 @@
-# APX script for camera release counter
+# APX scripts for camera release counting
 
-Script counts camera shutter releases (`CAM_RELEASE`) and cross-checks that count against
-feedback from an external 2-bit counter microchip (e.g. 74HC393) wired to the release line,
-to detect missed or spurious releases.
+Two companion scripts around the `ctr.env.cam.shot` camera trigger line:
 
-## Bus mapping
+- `nav_test.cpp` — periodically fires the camera trigger.
+- `photo.cpp` — counts releases and cross-checks them against external counter-microchip
+  feedback to detect missed or spurious releases.
+
+## nav_test.cpp
+
+| Variable | Mandala | Direction | Description |
+|---|---|---|---|
+| `CAM_RELEASE` | `ctr.env.cam.shot` | out | camera release signal (`off`/`single`/`series`) |
+| `M_SHOTS_SENT` | `est.usr.u4` | out | telemetry: total shots triggered (`shots_sent`) |
+
+Once a second, sets `CAM_RELEASE` to `single`, increments `shots_sent`, and 50ms later sets it
+back to `off`. Timing is tracked with `time_ms()` inside a single 100Hz polling task rather than
+scheduling a second one-shot task per pulse, since `task()` is meant to be called once per named
+function at startup (every script in this repo follows that convention) — calling it repeatedly
+from within a running task leaks a handle each time.
+
+## photo.cpp
 
 `CAM_RELEASE` is a fixed Mandala field; the `usrb`/`usr` indices below are examples, remap as needed:
 
@@ -17,8 +32,6 @@ to detect missed or spurious releases.
 | `M_RELEASE_COUNTER` | `est.usr.u1` | out | telemetry: total releases counted |
 | `M_MC_COUNTER` | `est.usr.u2` | out | telemetry: last microchip counter reading |
 | `M_ERROR_COUNTER` | `est.usr.u3` | out | telemetry: accumulated mismatch errors |
-
-## Behavior
 
 `CAM_RELEASE` pulses to `single` for only ~50ms, so the task polls at 100Hz (every 10ms) to
 reliably catch the edge. Every `off`→`single` transition increments `RELEASE_COUNTER`; the
