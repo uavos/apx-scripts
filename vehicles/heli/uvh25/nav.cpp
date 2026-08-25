@@ -5,12 +5,14 @@
 //======================================================================================
 
 // Communication Ports
-const uint8_t PORT_ID_CAN{1};
-const uint8_t PORT_ID_ESC{50};
+const uint8_t PORT_ID_CAN{11};
+const uint8_t PORT_ID_ESC{12};
 
 // Protocol Package Sizes
-const uint8_t PACK_SIZE_CAN{12};
 const uint8_t PACK_SIZE_ESC{10};
+
+constexpr const uint16_t TASK_MAIN_PERIOD{100}; //ms
+constexpr const uint16_t TASK_ERS_PERIOD{100};  //ms
 
 //======================================================================================
 // ERS CONSTANTS
@@ -26,7 +28,6 @@ const uint8_t PACK_SIZE_ESC{10};
 #define MULT_SQUIB_U_ARM 1.1f
 #define DIAG_CNT_THRESHOLD 10 //1s for 100ms period, ADC should be set for 10Hz!
 #define CHRG_CNT_THRESHOLD 30 //3s for 100ms period, ADC should be set for 10Hz!
-#define TASK_ERS_PERIOD 100   //ms
 #define MIN_VOLT_CHARGED 8.0f
 #define MAX_VOLT_DIAG 3.3f
 #define MAX_VOLT_DIAG_FIRE 0.3f
@@ -43,11 +44,6 @@ const uint8_t PACK_SIZE_ESC{10};
 #define STATUS_MSG_4 0x10
 #define STATUS_MSG_5 0x1B
 #define ERPM_DIVIDER 14.f //amount of magnets divided by 2
-
-// VESC CAN Packets
-#define CAN_PACKET_SET_CURRENT 1
-#define CAN_PACKET_SET_CURRENT_BRAKE 2
-#define CAN_PACKET_SET_RPM 3
 
 // UVHPU Power Management Unit
 #define UVHPU_ID 0x80
@@ -85,63 +81,61 @@ enum class ERS_State {
     FIRED = 5
 };
 
-//======================================================================================
-// TYPE ALIASES - MANDALA PARAMETERS
-//======================================================================================
+// vesc
+using m_vesc_tail_rpm = Mandala<mandala::est::env::usrf::f1>;        //+
+using m_vesc_tail_current = Mandala<mandala::est::env::usrf::f2>;    //+
+using m_vesc_tail_duty = Mandala<mandala::est::env::usrf::f3>;       //+
+using m_vesc_tail_temp_fet = Mandala<mandala::est::env::usrf::f4>;   //+
+using m_vesc_tail_temp_motor = Mandala<mandala::est::env::usrf::f5>; //+
+using m_vesc_tail_curr_in = Mandala<mandala::est::env::usrf::f6>;    //+
 
-// VESC Tail Parameters
-using m_vesc_tail_rpm = Mandala<mandala::est::env::usr::u5>;
-using m_vesc_tail_current = Mandala<mandala::est::env::usr::u6>;
-using m_vesc_tail_duty = Mandala<mandala::est::env::usr::u7>;
-using m_vesc_tail_temp_fet = Mandala<mandala::est::env::usr::u8>;
-using m_vesc_tail_temp_motor = Mandala<mandala::est::env::usr::u9>;
-using m_vesc_tail_curr_in = Mandala<mandala::est::env::usr::u10>;
+// uvhpu
+using m_pu_vbat = Mandala<mandala::sns::env::bat::voltage>; //+
+using m_pu_vsys = Mandala<mandala::sns::env::pwr::vsys>;    //+
+using m_pu_ibat = Mandala<mandala::sns::env::bat::current>; //+
+using m_pu_tbat = Mandala<mandala::sns::env::bat::temp>;    //+
+using m_pu_pbat = Mandala<mandala::est::env::usr::u1>;      //+
+using m_pu_cbat = Mandala<mandala::est::env::usr::u2>;      //+
+using m_pu_ebat = Mandala<mandala::est::env::usr::u3>;      //+
+using m_pu_status = Mandala<mandala::est::env::usrc::c1>;   //+
+using m_pu_hold = Mandala<mandala::est::env::usrc::c2>;     //+
 
-//Uvhpu
-using m_uvhpu_vbat = Mandala<mandala::sns::env::bat::voltage>;
-using m_uvhpu_pbat = Mandala<mandala::est::env::usr::u13>;
-using m_uvhpu_status = Mandala<mandala::est::env::usrc::c1>;
-using m_uvhpu_cbat = Mandala<mandala::est::env::usr::u12>;
-using m_uvhpu_ebat = Mandala<mandala::est::env::usr::u11>;
-using m_uvhpu_ibat = Mandala<mandala::sns::env::bat::current>;
-using m_uvhpu_tbat = Mandala<mandala::sns::env::bat::temp>;
-using m_uvhpu_hold = Mandala<mandala::est::env::usrc::c2>;
-using m_procedure = Mandala<mandala::cmd::nav::proc::mode>;
+// mcell
+using m_mcell_vbat = Mandala<mandala::est::env::usr::u4>;    //+
+using m_mcell_tpcb = Mandala<mandala::est::env::usr::u5>;    //+
+using m_mcell_tbat = Mandala<mandala::est::env::usr::u6>;    //+
+using m_mcell_max = Mandala<mandala::est::env::usr::u7>;     //+
+using m_mcell_min = Mandala<mandala::est::env::usr::u8>;     //+
+using m_mcell_status = Mandala<mandala::est::env::usrc::c3>; //+
 
-// Engine Parameters
-using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
-using m_rotor_rpm = Mandala<mandala::sns::env::gbox::rpm>;
-using m_eng_temp = Mandala<mandala::sns::env::eng::temp>;
-using m_eng_volt = Mandala<mandala::sns::env::eng::voltage>;
-using m_eng_current = Mandala<mandala::sns::env::eng::current>;
-using m_eng_rpm = Mandala<mandala::sns::env::eng::rpm>;
+// esc
+using m_eng_temp = Mandala<mandala::sns::env::eng::temp>;       //+
+using m_eng_volt = Mandala<mandala::sns::env::eng::voltage>;    //+
+using m_eng_current = Mandala<mandala::sns::env::eng::current>; //+
+using m_eng_rpm = Mandala<mandala::sns::env::eng::rpm>;         //+
 
-// Mcell
-using m_mcell_vbat = Mandala<mandala::est::env::usrf::f1>;
-using m_mcell_tpcb = Mandala<mandala::est::env::usrf::f2>;
-using m_mcell_tbat = Mandala<mandala::est::env::usrf::f3>;
-using m_mcell_vcl_max = Mandala<mandala::est::env::usrf::f4>;
-using m_mcell_vcl_min = Mandala<mandala::est::env::usrf::f5>;
-using m_mcell_delta = Mandala<mandala::est::env::usrf::f8>;
-using m_mcell_status = Mandala<mandala::est::env::usrc::c3>;
-
-// Altitude (AGL)
+// agl
 using m_agl = Mandala<mandala::sns::nav::agl::radio>;
 
 //ERS
-using m_ERS_block = Mandala<mandala::sns::env::ers::block>;
-using m_ERS_launch = Mandala<mandala::ctr::env::ers::launch>;
-using m_pyro_U = Mandala<mandala::est::env::usrf::f6>;
-using m_squib_U = Mandala<mandala::est::env::usr::u3>;
-using m_ERS_fire = Mandala<mandala::est::env::usrb::b1>;
-using m_ERS_charge = Mandala<mandala::est::env::usrb::b2>;
-using m_ERS_diag = Mandala<mandala::est::env::usrb::b3>;
-using m_ERS_LED = Mandala<mandala::est::env::usrb::b4>;
-using m_ERS_status = Mandala<mandala::sns::env::ers::status>;
+using m_ers_status = Mandala<mandala::sns::env::ers::status>; //+
+using m_ers_block = Mandala<mandala::sns::env::ers::block>;   //+
+using m_ers_launch = Mandala<mandala::ctr::env::ers::launch>; //+
 
-//======================================================================================
-// DATA STRUCTURES
-//======================================================================================
+using m_ers_fire = Mandala<mandala::est::env::usrb::b1>;   //+
+using m_ers_charge = Mandala<mandala::est::env::usrb::b2>; //+
+using m_ers_diag = Mandala<mandala::est::env::usrb::b3>;   //+
+using m_ers_led = Mandala<mandala::est::env::usrb::b4>;    //+
+
+// using mandala variables
+using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
+using m_rotor_rpm = Mandala<mandala::sns::env::prop::rpm>;
+using m_pyro_volt = Mandala<mandala::est::env::usrc::c4>;
+using m_squib_volt = Mandala<mandala::est::env::usrf::f7>;
+
+// trim rudder
+using m_reg_yaw = Mandala<mandala::cmd::nav::reg::yaw>;
+using m_trim_rudder_l = Mandala<mandala::est::env::usrf::f9>;
 
 // ESC VCP Data Structure
 struct ESC_VCP_Data
@@ -183,7 +177,7 @@ struct MCELL
     float cell_volt(uint8_t cell_idx) { return cell[cell_idx] / 1000.f; };
 };
 
-// UVHPU Data Structure
+// UVHPU
 struct UVHPU
 {
     struct
@@ -256,46 +250,54 @@ uint8_t diag_counter = DIAG_CNT_THRESHOLD;
 uint8_t fire_check_counter = DIAG_CNT_THRESHOLD;
 uint8_t charge_counter = CHRG_CNT_THRESHOLD; //need more time to charge
 
-//======================================================================================
-// FUNCTION DECLARATIONS
-//======================================================================================
+constexpr const uint16_t SERVO_TASK_MS{20};
+constexpr const float F = 3.f;
+constexpr const float Ampl = 1.f;
+constexpr const float w = 2.f * PI * F;
+constexpr const float T = 1.f / F;
+float test_servo = 0.f;
 
-// CAN Control Functions
-void setRPM(const uint8_t &, const int32_t &);
-void setCurrent(const uint8_t &, const float &);
-
-//======================================================================================
-// MAIN ENTRY POINT
-//======================================================================================
+using m_sin_test = Mandala<mandala::est::env::usrf::f8>;
 
 int main()
 {
-    schedule_periodic(task("on_main"), 100);
+    schedule_periodic(task("on_main"), TASK_MAIN_PERIOD);
     schedule_periodic(task("on_ers"), TASK_ERS_PERIOD);
+
+    //schedule_periodic(task("on_test_servo"), SERVO_TASK_MS);
 
     task("mcell"); //GCS with terminal command `vmexec("mcell")`
     task("uvhpu"); // GCS with terminal command `vmexec("uvhpu")`
 
-    m_eng_ctr();
     m_rotor_rpm();
-    m_procedure();
+    m_mode();
 
-    m_squib_U();
-    m_pyro_U();
-    m_ERS_fire();
-    m_ERS_block();
-    m_ERS_launch();
+    m_squib_volt();
+    m_pyro_volt();
+    m_ers_fire();
+    m_ers_block();
+    m_ers_launch();
 
-    m_ERS_block::publish(true);          //disarm on start
-    m_ERS_status::publish((uint32_t) 2); //set status disarmed
+    m_reg_yaw();
+
+    m_ers_block::publish(true);                                     //disarm on start
+    m_ers_status::publish((uint32_t) mandala::ers_status_disarmed); //set status disarmed
 
     receive(PORT_ID_ESC, "esc_handler");
-    receive(PORT_ID_CAN, "on_serial");
+    receive(PORT_ID_CAN, "can_handler");
 }
 
-//======================================================================================
-// UTILITY FUNCTIONS - CRC & SERIALIZATION
-//======================================================================================
+EXPORT void on_test_servo()
+{
+    float ctrl = Ampl * sin(w * test_servo);
+
+    test_servo += SERVO_TASK_MS / 1000.f;
+    if (test_servo >= T) {
+        test_servo = 0.f;
+    }
+
+    m_sin_test::publish(ctrl);
+}
 
 uint8_t update_crc8(uint8_t data, uint8_t crc)
 {
@@ -328,33 +330,6 @@ int16_t unpackInt16(const uint8_t *data, uint8_t index)
 {
     return (int16_t) (data[index] | (data[index + 1] << 8));
 }
-
-//======================================================================================
-// ESC HANDLER - VCP DATA PROCESSING
-//======================================================================================
-
-EXPORT void esc_handler(const uint8_t *data, size_t size)
-{
-    if (size != PACK_SIZE_ESC) {
-        return;
-    }
-
-    memcpy(esc_tbuf, data, size);
-
-    if (get_crc8(esc_tbuf, PACK_SIZE_ESC - 1) != esc_tbuf[PACK_SIZE_ESC - 1]) {
-        return;
-    }
-
-    esc_data.temp = data[0];
-    esc_data.voltage = float((esc_tbuf[1] << 8) | (esc_tbuf[2])) / 100.f;
-    esc_data.current = float((esc_tbuf[3] << 8) | (esc_tbuf[4])) / 100.f;
-    esc_data.consumption = uint16_t((esc_tbuf[5] << 8) | (esc_tbuf[6]));
-    esc_data.rpm = uint16_t((esc_tbuf[7] << 8) | (esc_tbuf[8])) * 100 / 7u;
-}
-
-//======================================================================================
-// MultiCell PROCESSING - Battery monitor
-//======================================================================================
 
 void processMCELLPackage(const uint32_t &can_id, const uint8_t *data)
 {
@@ -398,10 +373,6 @@ void processMCELLPackage(const uint32_t &can_id, const uint8_t *data)
     }
 }
 
-//======================================================================================
-// VESC CAN PROCESSING - TAIL MOTOR CONTROLLER
-//======================================================================================
-
 void processVESCPackage(const uint32_t &msg_id, const uint8_t *data, VESC_CAN_Data *vesc_data)
 {
     switch (msg_id) {
@@ -440,33 +411,6 @@ void processVESCPackage(const uint32_t &msg_id, const uint8_t *data, VESC_CAN_Da
     }
 }
 
-void setRPM(const uint8_t &VECS_CAN_ID, const int32_t &val)
-{
-    uint8_t msg[4 + 4] = {}; // ext id + DATA
-
-    msg[0] = VECS_CAN_ID;
-    msg[1] = CAN_PACKET_SET_RPM;
-    msg[3] |= 0x80; // IDE (bit 7) 1=ext,0=std
-    serializeInt(msg, 4, val);
-    send(PORT_ID_CAN, msg, 8, false);
-}
-
-void setCurrent(const uint8_t &VECS_CAN_ID, const float &val)
-{
-    uint8_t msg[4 + 4] = {}; // ext id + DATA
-    int32_t current = int32_t(val * 1000);
-
-    msg[0] = VECS_CAN_ID;
-    msg[1] = CAN_PACKET_SET_CURRENT;
-    msg[3] |= 0x80; // IDE (bit 7) 1=ext,0=std;
-    serializeInt(msg, 4, current);
-    send(PORT_ID_CAN, msg, 8, false);
-}
-
-//======================================================================================
-// UVHPU PROCESSING - POWER MANAGEMENT UNIT
-//======================================================================================
-
 void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
 {
     switch (can_id) {
@@ -474,8 +418,9 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
         _uvhpu.MSG1.vbat = (float) unpackInt16(data, 0) / 100.f;
         memcpy(&_uvhpu.MSG1.ibat, data + 2, 4);
         _uvhpu.MSG1.imon = (float) unpackInt16(data, 6) / 100.f;
-        m_uvhpu_vbat::publish(_uvhpu.MSG1.vbat);
-        m_uvhpu_ibat::publish(_uvhpu.MSG1.ibat);
+        m_pu_vbat::publish(_uvhpu.MSG1.vbat);
+        m_pu_vsys::publish(_uvhpu.MSG1.vbat);
+        m_pu_ibat::publish(_uvhpu.MSG1.ibat);
         break;
     }
     case UVHPU_PACK2: {
@@ -484,15 +429,15 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
         _uvhpu.MSG2.pbat = (float) unpackInt16(data, 4);
         _uvhpu.MSG2.status = data[7];
 
-        m_uvhpu_status::publish(_uvhpu.MSG2.status);
-        m_uvhpu_pbat::publish(_uvhpu.MSG2.pbat);
-        m_uvhpu_tbat::publish(_uvhpu.MSG2.tbat);
+        m_pu_status::publish(_uvhpu.MSG2.status);
+        m_pu_pbat::publish(_uvhpu.MSG2.pbat);
+        m_pu_tbat::publish(_uvhpu.MSG2.tbat);
         break;
     }
     case UVHPU_PACK3: {
         memcpy(&_uvhpu.MSG3.cbat, data, 8);
-        m_uvhpu_cbat::publish(_uvhpu.MSG3.cbat);
-        m_uvhpu_ebat::publish(_uvhpu.MSG3.ebat);
+        m_pu_cbat::publish(_uvhpu.MSG3.cbat);
+        m_pu_ebat::publish(_uvhpu.MSG3.ebat);
         break;
     }
     case UVHPU_PACK4: {
@@ -515,155 +460,14 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
     }
 }
 
-//======================================================================================
-// ERS PERIODIC TASK
-//======================================================================================
-
-EXPORT void on_ers()
-{
-    /*float squib_R = (m_squib_U::value() * MULT_SQUIB_U_DIAG) / (200.0f)
-                        / (m_pyro_U::value() * MULT_PIRO_U_DIAG / 5600.0f)
-                    - R_WIRES;
-    printf("resist %.2f", squib_R);*/
-
-    switch (ers_state) {
-    case ERS_State::DISARMED_INIT: {
-        m_ERS_LED::publish(false);           //turn LED off
-        m_ERS_charge::publish(false);        //discharge capacitor
-        m_ERS_fire::publish(false);          //ensure fire is off
-        m_ERS_status::publish((uint32_t) 2); //set status disarmed
-
-        m_ERS_diag::publish(true); //turn on diag voltage
-        ers_state = ERS_State::DISARMED_LOOP;
-        break;
-    }
-    case ERS_State::DISARMED_LOOP: {
-        if (fire_check_done == false) { //fire check done once
-            if (m_ERS_fire::value() == false) {
-                m_ERS_fire::publish(true);
-                return;
-                //time to settle
-            }
-
-            float pyro_U = m_pyro_U::value() * MULT_PIRO_U_DIAG;
-
-            if (pyro_U > MAX_VOLT_DIAG_FIRE) {
-                fire_check_counter--;
-                if (fire_check_counter == 0) {
-                    printf("pyro voltage did not drop after fire check: %.2f", pyro_U);
-                    printf("ERS ERROR");
-                    ers_state = ERS_State::ERROR;
-                }
-                return;
-            } else {
-                fire_check_counter = DIAG_CNT_THRESHOLD;
-            }
-            //everything ok, disarm fire and move on
-            m_ERS_fire::publish(false);
-            //time to settle
-            fire_check_done = true;
-            return;
-        }
-
-        float squib_U = m_squib_U::value() * MULT_SQUIB_U_DIAG;
-        float pyro_U = m_pyro_U::value() * MULT_PIRO_U_DIAG;
-        float squib_R = (squib_U / 200.0f) / (pyro_U / 5600.0f) - R_WIRES;
-
-        if (squib_R < R_SQUIB_MIN || squib_R > R_SQUIB_MAX || pyro_U > MAX_VOLT_DIAG) {
-            diag_counter--;
-            if (diag_counter == 0) {
-                printf("ERS ERROR");
-                if (pyro_U > MAX_VOLT_DIAG)
-                    printf("pyro voltage too high: %.2f", pyro_U);
-                else
-                    printf("squib resistance out of range: %.2f", squib_R);
-                ers_state = ERS_State::ERROR;
-            }
-            return;
-        } else {
-            diag_counter = DIAG_CNT_THRESHOLD;
-        }
-
-        //all checks passed, wait for arm command
-        if (m_ERS_block::value() == false) {
-            ers_state = ERS_State::ARM_INIT;
-            printf("ARMED");
-        }
-        break;
-    }
-    case ERS_State::ARM_INIT: {
-        m_ERS_diag::publish(false);          //ensure diag voltage is off
-        m_ERS_LED::publish(true);            //turn LED on
-        m_ERS_charge::publish(true);         //charge capacitor
-        m_ERS_status::publish((uint32_t) 1); //set status ok
-
-        ers_state = ERS_State::ARM_LOOP;
-        break;
-    }
-
-    case ERS_State::ARM_LOOP: {
-        if (m_ERS_block::value() == true) {
-            ers_state = ERS_State::DISARMED_INIT;
-            printf("DISARMED");
-            m_ERS_charge::publish(false); //discharge capacitor
-            return;
-        }
-
-        float squib_U = m_squib_U::value() * MULT_SQUIB_U_ARM; //recalibrate after charging
-        float pyro_U = m_pyro_U::value() * MULT_PIRO_U_ARM;
-        float squib_R = (squib_U / 200.0f) / (pyro_U / 5600.0f) - R_WIRES;
-
-        if (pyro_U < MIN_VOLT_CHARGED) {
-            charge_counter--;
-            if (charge_counter == 0) {
-                printf("pyro voltage too low: %.2f", pyro_U);
-                printf("ERS ERROR");
-            }
-        } else {
-            charge_counter = CHRG_CNT_THRESHOLD;
-        }
-
-        if (squib_R < R_SQUIB_MIN || squib_R > R_SQUIB_MAX) { //already stabilized at this point
-            printf("squib resistance out of range: %.2f", squib_R);
-        }
-
-        if (m_ERS_launch::value() == true) {
-            m_ERS_fire::publish(true);
-            ers_state = ERS_State::FIRED;
-            printf("ERS FIRED");
-        }
-
-        break;
-    }
-
-    case ERS_State::FIRED: {
-        m_ERS_LED::publish(false); //turn arm LED off
-
-        if (m_ERS_block::value() == true) { //reset ERS state if needed by blocking ers
-            ers_state = ERS_State::DISARMED_INIT;
-            printf("DISARMED");
-            m_ERS_charge::publish(false); //discharge capacitor
-        }
-        break;
-    }
-    case ERS_State::ERROR: {
-        m_ERS_fire::publish(false);          //ensure fire is off
-        m_ERS_diag::publish(false);          //turn off diag voltage
-        m_ERS_LED::publish(false);           //turn arm LED off
-        m_ERS_charge::publish(false);        //discharge capacitor
-        m_ERS_status::publish((uint32_t) 4); //set status failure
-
-        break;
-    }
-    }
-}
-
-//======================================================================================
-// MAIN PERIODIC TASK - ESC DATA PUBLISHING
-//======================================================================================
-
 EXPORT void on_main()
 {
+    if (m_reg_yaw::value() >= (uint32_t) mandala::reg_yaw_fixed) {
+        m_trim_rudder_l::publish(0.3f);
+    } else {
+        m_trim_rudder_l::publish(0.f);
+    }
+
     // Save ESC data to mandala
     m_eng_temp::publish((uint32_t) esc_data.temp);
     m_eng_volt::publish((float) esc_data.voltage);
@@ -671,8 +475,8 @@ EXPORT void on_main()
     m_eng_rpm::publish((uint32_t) esc_data.rpm);
 
     // Calculate min and max cell voltages from MCELL data
-    float vcl_max = -1.0f;
-    float vcl_min = 1000.0f;
+    float vcl_max = -1.f;
+    float vcl_min = 1000.f;
 
     for (uint8_t i = 0; i < 12; i++) {
         float cell_voltage = _mcel.cell_volt(i);
@@ -687,19 +491,17 @@ EXPORT void on_main()
     }
 
     // Publish min/max values if valid readings exist
-    if (vcl_max > 0 && vcl_min < 1000.0f) {
-        m_mcell_vcl_max::publish(vcl_max);
-        m_mcell_vcl_min::publish(vcl_min);
+    if (vcl_max > 0 && vcl_min < 1000.f) {
+        m_mcell_max::publish(vcl_max);
+        m_mcell_min::publish(vcl_min);
     }
-    float delta = vcl_max - vcl_min;
-    m_mcell_delta::publish(delta);
 
     //RPM anti-stuck logic: if RPM is the same for a long time and less than 500, set it to 0
     float rpm_main = m_rotor_rpm::value();
     if (rpm_main == rpm_prev) {
         same_counter++;
         if (same_counter >= SAME_LIMIT && rpm_main < MIN_RPM_CHECK) {
-            m_rotor_rpm::publish(0.0f);
+            m_rotor_rpm::publish(0.f);
             same_counter = 0;
         }
     } else {
@@ -708,79 +510,174 @@ EXPORT void on_main()
     }
 
     //pu hold
-    if (m_procedure::value() == (uint32_t) mandala::proc_mode_TAXI) { //only in taxi mode
-        m_uvhpu_hold::publish(false);
+    if (m_mode::value() == (uint32_t) mandala::proc_mode_TAXI) { //only in taxi mode
+        m_pu_hold::publish(false);
     } else {
-        m_uvhpu_hold::publish(true);
+        m_pu_hold::publish(true);
     }
 }
 
-//======================================================================================
-// UVHPU TERMINAL COMMAND - DATA DISPLAY
-//======================================================================================
-
-EXPORT void uvhpu()
+EXPORT void on_ers()
 {
-    printf("vbat: %.2f", _uvhpu.MSG1.vbat);
-    printf("ibat: %.2f", _uvhpu.MSG1.ibat);
-    printf("imon: %.2f", _uvhpu.MSG1.imon);
+    /*float squib_R = (m_squib_U::value() * MULT_SQUIB_U_DIAG) / (200.0f)
+                        / (m_pyro_U::value() * MULT_PIRO_U_DIAG / 5600.0f)
+                    - R_WIRES;
+    printf("resist %.2f", squib_R);*/
 
-    printf("vout: %.2f", _uvhpu.MSG2.vout);
-    printf("tbat: %.2f", _uvhpu.MSG2.tbat);
-    printf("pbat: %.2f", _uvhpu.MSG2.pbat);
-    printf("status: %u", _uvhpu.MSG2.status);
+    switch (ers_state) {
+    case ERS_State::DISARMED_INIT: {
+        m_ers_led::publish(false);                                      //turn LED off
+        m_ers_charge::publish(false);                                   //discharge capacitor
+        m_ers_fire::publish(false);                                     //ensure fire is off
+        m_ers_status::publish((uint32_t) mandala::ers_status_disarmed); //set status disarmed
 
-    printf("cbat: %.2f", _uvhpu.MSG3.cbat);
-    printf("ebat: %.2f", _uvhpu.MSG3.ebat);
+        m_ers_diag::publish(true); //turn on diag voltage
+        ers_state = ERS_State::DISARMED_LOOP;
+        break;
+    }
+    case ERS_State::DISARMED_LOOP: {
+        if (fire_check_done == false) { //fire check done once
+            if (m_ers_fire::value() == false) {
+                m_ers_fire::publish(true);
+                return;
+                //time to settle
+            }
 
-    printf("res_bar: %.2f", _uvhpu.MSG4.res_bar);
-    printf("v_res: %.2f", _uvhpu.MSG4.v_res);
+            float pyro_U = m_pyro_volt::value() * MULT_PIRO_U_DIAG;
 
-    printf("ibat_filt: %.2f", _uvhpu.MSG5.ibat_filt);
-    printf("vbat_filt: %.2f", _uvhpu.MSG5.vbat_filt);
+            if (pyro_U > MAX_VOLT_DIAG_FIRE) {
+                fire_check_counter--;
+                if (fire_check_counter == 0) {
+                    printf("VM:pyro voltage did not drop after fire check: %.2f", pyro_U);
+                    printf("VM:ERS ERROR");
+                    ers_state = ERS_State::ERROR;
+                }
+                return;
+            } else {
+                fire_check_counter = DIAG_CNT_THRESHOLD;
+            }
+            //everything ok, disarm fire and move on
+            m_ers_fire::publish(false);
+            //time to settle
+            fire_check_done = true;
+            return;
+        }
 
-    printf("cbat_res: %.2f", _uvhpu.MSG6.cbat_res);
-    printf("ebat_res: %.2f", _uvhpu.MSG6.ebat_res);
+        float squib_U = m_squib_volt::value() * MULT_SQUIB_U_DIAG;
+        float pyro_U = m_pyro_volt::value() * MULT_PIRO_U_DIAG;
+        float squib_R = (squib_U / 200.0f) / (pyro_U / 5600.0f) - R_WIRES;
 
-    printf("life_cycles: %u", _uvhpu.MSG7.life_cycles);
-    printf("cbat_mod: %.2f", _uvhpu.MSG7.cbat_mod);
+        if (squib_R < R_SQUIB_MIN || squib_R > R_SQUIB_MAX || pyro_U > MAX_VOLT_DIAG) {
+            diag_counter--;
+            if (diag_counter == 0) {
+                printf("VM:ERS ERROR");
+                if (pyro_U > MAX_VOLT_DIAG)
+                    printf("VM:pyro voltage too high: %.2f", pyro_U);
+                else
+                    printf("VM:squib resistance out of range: %.2f", squib_R);
+                ers_state = ERS_State::ERROR;
+            }
+            return;
+        } else {
+            diag_counter = DIAG_CNT_THRESHOLD;
+        }
+
+        //all checks passed, wait for arm command
+        if (m_ers_block::value() == false) {
+            ers_state = ERS_State::ARM_INIT;
+            printf("VM:ARMED");
+        }
+        break;
+    }
+    case ERS_State::ARM_INIT: {
+        m_ers_diag::publish(false);                               //ensure diag voltage is off
+        m_ers_led::publish(true);                                 //turn LED on
+        m_ers_charge::publish(true);                              //charge capacitor
+        m_ers_status::publish((uint32_t) mandala::ers_status_ok); //set status ok
+
+        ers_state = ERS_State::ARM_LOOP;
+        break;
+    }
+
+    case ERS_State::ARM_LOOP: {
+        if (m_ers_block::value() == true) {
+            ers_state = ERS_State::DISARMED_INIT;
+            printf("VM:DISARMED");
+            m_ers_charge::publish(false); //discharge capacitor
+            return;
+        }
+
+        float squib_U = m_squib_volt::value() * MULT_SQUIB_U_ARM; //recalibrate after charging
+        float pyro_U = m_pyro_volt::value() * MULT_PIRO_U_ARM;
+        float squib_R = (squib_U / 200.0f) / (pyro_U / 5600.0f) - R_WIRES;
+
+        if (pyro_U < MIN_VOLT_CHARGED) {
+            charge_counter--;
+            if (charge_counter == 0) {
+                printf("VM:pyro voltage too low: %.2f", pyro_U);
+                printf("VM:ERS ERROR");
+            }
+        } else {
+            charge_counter = CHRG_CNT_THRESHOLD;
+        }
+
+        if (squib_R < R_SQUIB_MIN || squib_R > R_SQUIB_MAX) { //already stabilized at this point
+            printf("VM:squib resistance out of range: %.2f", squib_R);
+        }
+
+        if (m_ers_launch::value() == true) {
+            m_ers_fire::publish(true);
+            ers_state = ERS_State::FIRED;
+            printf("VM:ERS FIRED");
+        }
+
+        break;
+    }
+
+    case ERS_State::FIRED: {
+        m_ers_led::publish(false); //turn arm LED off
+
+        if (m_ers_block::value() == true) { //reset ERS state if needed by blocking ers
+            ers_state = ERS_State::DISARMED_INIT;
+            printf("DISARMED");
+            m_ers_charge::publish(false); //discharge capacitor
+        }
+        break;
+    }
+    case ERS_State::ERROR: {
+        m_ers_fire::publish(false);                                    //ensure fire is off
+        m_ers_diag::publish(false);                                    //turn off diag voltage
+        m_ers_led::publish(false);                                     //turn arm LED off
+        m_ers_charge::publish(false);                                  //discharge capacitor
+        m_ers_status::publish((uint32_t) mandala::ers_status_failure); //set status failure
+        break;
+    }
+    }
 }
 
-//======================================================================================
-// MultiCell TERMINAL COMMAND - DATA DISPLAY
-//======================================================================================
-
-EXPORT void mcell()
+EXPORT void esc_handler(const uint8_t *data, size_t size)
 {
-    printf("v_bat: %.2f", _mcel.v_bat);
-    printf("t_bat: %.2f", _mcel.t_bat);
-    printf("t_pcb: %.2f", _mcel.t_pcb);
-    printf("state: %u", _mcel.status);
+    if (size != PACK_SIZE_ESC) {
+        return;
+    }
 
-    printf("C[1]: %.2f", _mcel.cell_volt(0));
-    printf("C[2]: %.2f", _mcel.cell_volt(1));
-    printf("C[3]: %.2f", _mcel.cell_volt(2));
-    printf("C[4]: %.2f", _mcel.cell_volt(3));
+    memcpy(esc_tbuf, data, size);
 
-    printf("C[5]: %.2f", _mcel.cell_volt(4));
-    printf("C[6]: %.2f", _mcel.cell_volt(5));
-    printf("C[7]: %.2f", _mcel.cell_volt(6));
-    printf("C[8]: %.2f", _mcel.cell_volt(7));
+    if (get_crc8(esc_tbuf, PACK_SIZE_ESC - 1) != esc_tbuf[PACK_SIZE_ESC - 1]) {
+        return;
+    }
 
-    printf("C[9] %.2f", _mcel.cell_volt(8));
-    printf("C[10] %.2f", _mcel.cell_volt(9));
-    printf("C[11] %.2f", _mcel.cell_volt(10));
-    printf("C[12] %.2f", _mcel.cell_volt(11));
+    esc_data.temp = data[0];
+    esc_data.voltage = float((esc_tbuf[1] << 8) | (esc_tbuf[2])) / 100.f;
+    esc_data.current = float((esc_tbuf[3] << 8) | (esc_tbuf[4])) / 100.f;
+    esc_data.consumption = uint16_t((esc_tbuf[5] << 8) | (esc_tbuf[6]));
+    esc_data.rpm = uint16_t((esc_tbuf[7] << 8) | (esc_tbuf[8])) * 100 / 7u;
 }
 
-//======================================================================================
-// CAN MESSAGE ROUTER - MAIN SERIAL HANDLER
-//======================================================================================
-
-EXPORT void on_serial(const uint8_t *data, size_t size)
+EXPORT void can_handler(const uint8_t *data, size_t size)
 {
-    if (size != PACK_SIZE_CAN) {
-        //return;
+    if (size < 4) {
+        return;
     }
 
     uint32_t can_id = (uint32_t) (data[0] + (data[1] << 8) + (data[2] << 16) + (data[3] << 24));
@@ -825,7 +722,6 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
     case MCELL_PACK5:
     case MCELL_PACK6:
     case MCELL_PACK7: {
-        //printf("mcell %x", can_id);
         processMCELLPackage(can_id, can_data);
         break;
     }
@@ -840,4 +736,54 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
         break;
     }
     }
+}
+
+EXPORT void uvhpu()
+{
+    printf("vbat: %.2f", _uvhpu.MSG1.vbat);
+    printf("ibat: %.2f", _uvhpu.MSG1.ibat);
+    printf("imon: %.2f", _uvhpu.MSG1.imon);
+
+    printf("vout: %.2f", _uvhpu.MSG2.vout);
+    printf("tbat: %.2f", _uvhpu.MSG2.tbat);
+    printf("pbat: %.2f", _uvhpu.MSG2.pbat);
+    printf("status: %u", _uvhpu.MSG2.status);
+
+    printf("cbat: %.2f", _uvhpu.MSG3.cbat);
+    printf("ebat: %.2f", _uvhpu.MSG3.ebat);
+
+    printf("res_bar: %.2f", _uvhpu.MSG4.res_bar);
+    printf("v_res: %.2f", _uvhpu.MSG4.v_res);
+
+    printf("ibat_filt: %.2f", _uvhpu.MSG5.ibat_filt);
+    printf("vbat_filt: %.2f", _uvhpu.MSG5.vbat_filt);
+
+    printf("cbat_res: %.2f", _uvhpu.MSG6.cbat_res);
+    printf("ebat_res: %.2f", _uvhpu.MSG6.ebat_res);
+
+    printf("life_cycles: %u", _uvhpu.MSG7.life_cycles);
+    printf("cbat_mod: %.2f", _uvhpu.MSG7.cbat_mod);
+}
+
+EXPORT void mcell()
+{
+    printf("v_bat: %.2f", _mcel.v_bat);
+    printf("t_bat: %.2f", _mcel.t_bat);
+    printf("t_pcb: %.2f", _mcel.t_pcb);
+    printf("state: %u", _mcel.status);
+
+    printf("C[1]: %.2f", _mcel.cell_volt(0));
+    printf("C[2]: %.2f", _mcel.cell_volt(1));
+    printf("C[3]: %.2f", _mcel.cell_volt(2));
+    printf("C[4]: %.2f", _mcel.cell_volt(3));
+
+    printf("C[5]: %.2f", _mcel.cell_volt(4));
+    printf("C[6]: %.2f", _mcel.cell_volt(5));
+    printf("C[7]: %.2f", _mcel.cell_volt(6));
+    printf("C[8]: %.2f", _mcel.cell_volt(7));
+
+    printf("C[9] %.2f", _mcel.cell_volt(8));
+    printf("C[10] %.2f", _mcel.cell_volt(9));
+    printf("C[11] %.2f", _mcel.cell_volt(10));
+    printf("C[12] %.2f", _mcel.cell_volt(11));
 }
