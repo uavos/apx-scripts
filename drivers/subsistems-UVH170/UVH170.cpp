@@ -1,59 +1,63 @@
 #include <apx.h>
 
-const port_id_t PORT_ID{1};
-const port_id_t PORT_ID_FUEL{3};
+const port_id_t PORT_ID{11};
+const port_id_t PORT_ID_FUEL{12};
 
 const uint8_t PACK_SIZE_CAN{12};
 const uint8_t MSG_FUEL_SIZE{9}; //FUEL
 
 //Vesc tail
-using m_vesc_tail_rpm = Mandala<mandala::est::env::usr::u5>;
-using m_vesc_tail_current = Mandala<mandala::est::env::usr::u6>;
-using m_vesc_tail_duty = Mandala<mandala::est::env::usr::u7>;
-using m_vesc_tail_temp_fet = Mandala<mandala::est::env::usr::u8>;
-using m_vesc_tail_temp_motor = Mandala<mandala::est::env::usr::u9>;
-using m_vesc_tail_curr_in = Mandala<mandala::est::env::usr::u2>;
+using m_vesc_tail_curr_in = Mandala<mandala::est::env::usr::u1>;
+using m_vesc_tail_rpm = Mandala<mandala::est::env::usr::u2>;
+using m_vesc_tail_duty = Mandala<mandala::est::env::usr::u3>;
+using m_vesc_tail_temp_fet = Mandala<mandala::est::env::usr::u4>;
+using m_vesc_tail_temp_motor = Mandala<mandala::est::env::usr::u5>;
 
 //Vesc gen
 using m_vesc_gen_rpm = Mandala<mandala::sns::env::gen::rpm>;
 using m_vesc_gen_curr_in = Mandala<mandala::sns::env::gen::current>;
 using m_vesc_gen_motor_temp = Mandala<mandala::sns::env::gen::temp>;
-using m_vesc_gen_fet_temp = Mandala<mandala::est::env::usr::u14>;
+using m_vesc_gen_fet_temp = Mandala<mandala::est::env::usr::u7>;
 
 //Uvhpu
 using m_uvhpu_vbat = Mandala<mandala::sns::env::bat::voltage>;
-using m_uvhpu_pbat = Mandala<mandala::est::env::usr::u13>;
-using m_uvhpu_status = Mandala<mandala::est::env::usrc::c1>;
-using m_uvhpu_cbat = Mandala<mandala::est::env::usr::u12>;
-using m_uvhpu_ebat = Mandala<mandala::est::env::usr::u11>;
 using m_uvhpu_ibat = Mandala<mandala::sns::env::bat::current>;
 using m_uvhpu_tbat = Mandala<mandala::sns::env::bat::temp>;
+using m_uvhpu_status = Mandala<mandala::est::env::usrc::c1>;
+using m_uvhpu_ebat = Mandala<mandala::est::env::usr::u11>;
+
 using m_uvhpu_hold = Mandala<mandala::est::env::usrc::c2>;
 using m_procedure = Mandala<mandala::cmd::nav::proc::mode>;
+
+using m_uvhpu_vsys = Mandala<mandala::sns::env::pwr::vsys>;
 
 //Engine
 using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
 using m_sw_starter = Mandala<mandala::ctr::nav::eng::starter>;
 using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
-using m_rotor_rpm = Mandala<mandala::sns::env::gbox::rpm>;
+using m_rotor_rpm = Mandala<mandala::sns::env::eng::rpm>;
 
 // AGL
 using m_agl = Mandala<mandala::sns::nav::agl::radio>;
 
 //fuel pressure ADC
-using m_fps_adc = Mandala<mandala::est::env::usr::u3>;
+using m_fps_adc = Mandala<mandala::sns::env::scr::s1>;
 using m_fps = Mandala<mandala::sns::env::fuel::ps>;
 
 // DUT
 using m_fuel_p = Mandala<mandala::sns::env::fuel::level>;
-using m_fuel_l = Mandala<mandala::est::env::usrf::f2>;
+using m_fuel_l = Mandala<mandala::est::env::usr::u8>;
 using m_warn = Mandala<mandala::est::env::usrc::c3>;
+
+// trim rudder
+using m_reg_yaw = Mandala<mandala::cmd::nav::reg::yaw>;
+using m_trim_rudder_l = Mandala<mandala::est::env::usrf::f9>;
 
 const uint16_t TASK_FUEL_MS{500}; //msec
 
 uint8_t snd_fuel_buf[MSG_FUEL_SIZE] = {};
 uint8_t ADR_FUEL = 170;
-const float V_MAX1 = 16.7f;
+const float V_MAX1 = 12.9f;
 const uint8_t TIME_SA{5}; //sec
 struct _fuel
 {
@@ -175,11 +179,11 @@ UVHPU _uvhpu{};
 #define AGL_CAN_ID 0x00090002
 
 //-------------   STARTER CONFIG   ---------------------------------------------------------
-const uint8_t STARTER_RPM_TIME = 30;    //3 sec at 100ms interval
-const uint8_t STARTER_CURRENT_TIME = 5; //0.5 sec at 100ms interval
-const int32_t STARTER_RPM = 20000;      // ~1000 rpm for starter
-const float STARTER_CURRENT = 20.f;     // 20A for starter
-const float STARTER_THROTTLE = 0.01f;   // 1% throttle during starter
+const uint8_t STARTER_RPM_TIME = 70;    //10 = 1 sec
+const uint8_t STARTER_CURRENT_TIME = 0; //0.5 sec at 100ms interval
+const int32_t STARTER_RPM = 23000;      // ~1000 rpm for starter
+//const float STARTER_CURRENT = 200.f;    // starter current
+const float STARTER_THROTTLE = 0.02f; // 2% throttle during starter
 
 void setRPM(const uint8_t &, const int32_t &);
 void setCurrent(const uint8_t &, const float &);
@@ -191,10 +195,22 @@ bool starter_active = false;
 static uint32_t same_counter = 0;
 const uint32_t SAME_LIMIT = 30; //3 sec at 100ms interval
 
+constexpr const uint16_t SERVO_TASK_MS{20};
+constexpr const float F = 2.f;
+constexpr const float Ampl = 1.f;
+constexpr const float w = 2.f * PI * F;
+constexpr const float T = 1.f / F;
+
+float t = 0.f;
+
+using m_sin_test = Mandala<mandala::est::env::usrf::f8>;
+
 int main()
 {
     schedule_periodic(task("on_main"), 100);
+    schedule_periodic(task("on_start_eng"), 100);
     schedule_periodic(task("on_fuel"), TASK_FUEL_MS);
+    //schedule_periodic(task("on_test_servo"), SERVO_TASK_MS);
 
     task("uvhpu"); //GCS with terminal command `vmexec("uvhpu")`
 
@@ -204,36 +220,30 @@ int main()
     m_fps_adc();
     m_rotor_rpm();
     m_procedure();
+    m_reg_yaw();
 
     receive(PORT_ID, "on_serial");
     receive(PORT_ID_FUEL, "on_fuel_serial");
 }
 
-EXPORT void on_main()
+EXPORT void on_test_servo()
 {
-    //power ignition logic
-    bool on_power_ignition = (bool) m_pwr_ign::value();
-    if (on_power_ignition && (uint32_t) m_sw_starter::value()) {
-        starter_active = true;
+    float ctrl = Ampl * sin(w * t);
+
+    t += SERVO_TASK_MS / 1000.f;
+    if (t >= T) {
+        t = 0.f;
     }
 
-    if (starter_active) {
-        m_eng_ctr::publish(STARTER_THROTTLE); //throttle to 1% during starter
-        if (currentStarterCnt > 0) {          //current phase of starter
-            setCurrent(VESC_GEN_ID, -STARTER_CURRENT);
-            currentStarterCnt--;
-        }
-        if (currentStarterCnt == 0) { //rpm phase of starter
-            if (rpmStarterCnt > 0) {
-                setRPM(VESC_GEN_ID, STARTER_RPM);
-                rpmStarterCnt--;
-            } else {
-                starter_active = false;
-                currentStarterCnt = STARTER_CURRENT_TIME;
-                rpmStarterCnt = STARTER_RPM_TIME;
-                setRPM(VESC_GEN_ID, 0);
-            }
-        }
+    m_sin_test::publish(ctrl);
+}
+
+EXPORT void on_main()
+{
+    if (m_reg_yaw::value() >= 1) {
+        m_trim_rudder_l::publish(-0.4f);
+    } else {
+        m_trim_rudder_l::publish(0.0f);
     }
 
     // calculate fuel pressure from ADC value
@@ -243,10 +253,8 @@ EXPORT void on_main()
     //RPM anti-stuck logic: if RPM is the same for a long time and less than 500, set it to 0
     float rpm_main = m_rotor_rpm::value();
     if (rpm_main == rpm_prev) {
-        same_counter++;
-        if (same_counter >= SAME_LIMIT && rpm_main < 500.f) {
+        if (same_counter++ >= SAME_LIMIT && rpm_main < 500.f && rpm_main > 0.f) {
             m_rotor_rpm::publish(0.0f);
-            same_counter = 0;
         }
     } else {
         rpm_prev = rpm_main;
@@ -258,6 +266,31 @@ EXPORT void on_main()
         m_uvhpu_hold::publish(false);
     } else {
         m_uvhpu_hold::publish(true);
+    }
+}
+
+EXPORT void on_start_eng()
+{
+    //power ignition logic
+    bool on_power_ignition = (bool) m_pwr_ign::value();
+    if (on_power_ignition && (uint32_t) m_sw_starter::value()) {
+        starter_active = true;
+    }
+
+    if (starter_active) {
+        m_eng_ctr::publish(STARTER_THROTTLE); //throttle to 1% during starter
+
+        if (rpmStarterCnt > 0) {
+            setRPM(VESC_GEN_ID, STARTER_RPM);
+            //printf("starter rpm phase");
+            rpmStarterCnt--;
+        } else {
+            starter_active = false;
+            currentStarterCnt = STARTER_CURRENT_TIME;
+            rpmStarterCnt = STARTER_RPM_TIME;
+            setRPM(VESC_GEN_ID, 0);
+            //printf("starter finished");
+        }
     }
 }
 
@@ -309,7 +342,7 @@ EXPORT void on_fuel()
     snd_fuel_buf[1] = ADR_FUEL;
 
     snd_fuel_buf[3] = calcCRC(snd_fuel_buf, 3);
-    send(PORT_ID_FUEL, snd_fuel_buf, 4, true);
+    send(PORT_ID_FUEL, snd_fuel_buf, 4, false);
 }
 
 void serializeInt(uint8_t *data, uint8_t index, int32_t value)
@@ -335,6 +368,7 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
 
         m_uvhpu_vbat::publish(_uvhpu.MSG1.vbat);
         m_uvhpu_ibat::publish(_uvhpu.MSG1.ibat);
+        m_uvhpu_vsys::publish(_uvhpu.MSG1.vbat);
         break;
     }
     case UVHPU_PACK2: {
@@ -344,13 +378,11 @@ void processUVHPUackage(const uint32_t &can_id, const uint8_t *data)
         _uvhpu.MSG2.status = data[7];
 
         m_uvhpu_status::publish(_uvhpu.MSG2.status);
-        m_uvhpu_pbat::publish(_uvhpu.MSG2.pbat);
         m_uvhpu_tbat::publish(_uvhpu.MSG2.tbat);
         break;
     }
     case UVHPU_PACK3: {
         memcpy(&_uvhpu.MSG3.cbat, data, 8);
-        m_uvhpu_cbat::publish(_uvhpu.MSG3.cbat);
         m_uvhpu_ebat::publish(_uvhpu.MSG3.ebat);
         break;
     }
@@ -497,7 +529,7 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
         processVESCPackage(msg_id, can_data, &tail_data);
 
         m_vesc_tail_rpm::publish((float) tail_data.rpm / 11);
-        m_vesc_tail_current::publish(tail_data.current);
+        //m_vesc_tail_current::publish(tail_data.current);
         m_vesc_tail_duty::publish(tail_data.duty);
         m_vesc_tail_temp_fet::publish(tail_data.temp_fet);
         m_vesc_tail_temp_motor::publish(tail_data.temp_mot);
