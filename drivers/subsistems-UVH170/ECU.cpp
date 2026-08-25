@@ -2,7 +2,7 @@
 
 const uint8_t PORT_ID{8};
 const uint8_t PACK_SIZE_CAN{12};
-const uint8_t TASK_ECU_MS{50};
+const uint8_t TASK_ECU_MS{10};
 
 const uint16_t CAN_BASE_ADDR{1520};
 const uint8_t OFFSET_CAN_ID_CURRENT_THROTTLE{71};
@@ -10,21 +10,20 @@ const uint16_t CAN_ID_CURRENT_THROTTLE = CAN_BASE_ADDR + OFFSET_CAN_ID_CURRENT_T
 
 //u2 u3 u4 u10 are already used in adc & gpio
 //ECU values
-using m_mat = Mandala<mandala::est::env::usrf::f7>;
-using m_clt = Mandala<mandala::est::env::usrf::f8>;
+using m_ego = Mandala<mandala::est::env::usrf::f1>;
+using m_clt = Mandala<mandala::est::env::usrf::f2>;
 using m_baro = Mandala<mandala::est::env::usrf::f3>;
 using m_map = Mandala<mandala::est::env::usrf::f4>;
-using m_ego = Mandala<mandala::est::env::usrf::f9>;
 using m_tps = Mandala<mandala::est::env::usrf::f5>;
 using m_vbat = Mandala<mandala::est::env::usrf::f6>;
+using m_mat = Mandala<mandala::est::env::usrf::f7>;
 
-using m_pw1 = Mandala<mandala::est::env::usrw::w1>;
-using m_pw2 = Mandala<mandala::est::env::usrw::w2>;
-using m_rpm = Mandala<mandala::est::env::usrw::w3>;
-using m_egt_1 = Mandala<mandala::est::env::usrw::w4>;
-using m_egt_2 = Mandala<mandala::est::env::usrw::w5>;
-using m_egt_3 = Mandala<mandala::est::env::usrw::w6>;
-using m_egt_4 = Mandala<mandala::est::env::usrw::w7>;
+using m_egt_1 = Mandala<mandala::est::env::usrw::w1>;
+using m_egt_2 = Mandala<mandala::est::env::usrw::w2>;
+using m_egt_3 = Mandala<mandala::est::env::usrw::w3>;
+using m_egt_4 = Mandala<mandala::est::env::usrw::w4>;
+
+using m_rpm = Mandala<mandala::est::env::usrw::w5>;
 
 using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
 using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
@@ -121,13 +120,10 @@ EXPORT void on_serial(const uint8_t *data, size_t size)
     //pw1 pw2 rpm
     case CAN_BASE_ADDR + 0: {
         //uint16_t seconds = data[4] << 8 | data[5];
-        uint16_t pw1 = ((uint16_t) data[6] << 8 | data[7]); //us
-        uint16_t pw2 = ((uint16_t) data[8] << 8 | data[9]); //us
+        //uint16_t pw1 = ((uint16_t) data[6] << 8 | data[7]); //us
+        //uint16_t pw2 = ((uint16_t) data[8] << 8 | data[9]); //us
         uint16_t rpm = data[10] << 8 | data[11];
-
-        m_pw1::publish((uint32_t) pw1 / 1000); // pulse width 1 [ms]
-        m_pw2::publish((uint32_t) pw2 / 1000); // pulse width 2 [ms]
-        m_rpm::publish((uint32_t) rpm);        // engine rpm
+        m_rpm::publish((uint32_t) rpm); // engine rpm
 
         break;
     }
