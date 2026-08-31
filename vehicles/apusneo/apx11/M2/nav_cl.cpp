@@ -24,6 +24,9 @@ using m_sns_temp = Mandala<mandala::sns::nav::gyro::temp>; //gyro temp
 using m_ltt = Mandala<mandala::est::env::sys::ltt>;
 using m_health = Mandala<mandala::est::env::sys::health>;
 
+using m_fts = Mandala<mandala::est::env::usrb::b3>;
+using m_squawk_alert = Mandala<mandala::est::env::usrc::c9>;
+
 using m_thr_cut = Mandala<mandala::cmd::nav::eng::cut>;
 using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
 
@@ -51,6 +54,8 @@ int main()
     m_ltt();
     m_health();
 
+    m_fts();
+
     schedule_periodic(task("on_main"), TASK_MAIN_MS);
     schedule_periodic(task("on_heater"), TASK_HEATER_MS);
 
@@ -68,7 +73,12 @@ EXPORT void on_main()
 
     m_status_heater::publish((uint32_t) status);
 
-    if ((uint32_t) m_ltt::value() < 10) {
+    if ((bool) m_fts::value()) {
+        m_squawk_alert::publish(2u); //2 - emergency (FTS active)
+    } else if ((uint32_t) m_ltt::value() >= 10) {
+        m_squawk_alert::publish(1u); //1 - lost link (no GCS comms >=10s)
+    } else {
+        m_squawk_alert::publish(0u); //0 - normal
         m_health::publish((uint32_t) mandala::sys_health_normal);
     }
 
