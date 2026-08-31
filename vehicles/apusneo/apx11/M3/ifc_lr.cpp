@@ -129,7 +129,6 @@ void sendCmdToCan(const uint32_t &can_id, const uint8_t *data, const uint8_t &si
     }
 
     send(PORT_ID_CAN_AUX, msg, 4 + size, false);
-    send(PORT_ID_CAN_AUX + 1, msg, 4 + size, true);
 }
 
 template<typename T>
