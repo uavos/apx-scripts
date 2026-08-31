@@ -73,13 +73,16 @@ EXPORT void on_main()
 
     m_status_heater::publish((uint32_t) status);
 
+    if ((uint32_t) m_ltt::value() < 10) {
+        m_health::publish((uint32_t) mandala::sys_health_normal);
+    }
+
     if ((bool) m_fts::value()) {
         m_squawk_alert::publish(2u); //2 - emergency (FTS active)
-    } else if ((uint32_t) m_ltt::value() >= 10) {
-        m_squawk_alert::publish(1u); //1 - lost link (no GCS comms >=10s)
+    } else if ((uint32_t) m_health::value() == mandala::sys_health_warning) {
+        m_squawk_alert::publish(1u); //1 - lost link (system health warning)
     } else {
         m_squawk_alert::publish(0u); //0 - normal
-        m_health::publish((uint32_t) mandala::sys_health_normal);
     }
 
     if ((uint32_t) m_health::value() == mandala::sys_health_warning
