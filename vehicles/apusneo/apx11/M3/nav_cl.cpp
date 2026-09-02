@@ -25,7 +25,7 @@ using m_ltt = Mandala<mandala::est::env::sys::ltt>;
 using m_health = Mandala<mandala::est::env::sys::health>;
 
 using m_fts = Mandala<mandala::est::env::usrb::b3>;
-using m_squawk_alert = Mandala<mandala::est::env::usrc::c9>;
+using m_squawk = Mandala<mandala::est::env::usrw::w5>;
 
 using m_thr_cut = Mandala<mandala::cmd::nav::eng::cut>;
 using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
@@ -78,11 +78,11 @@ EXPORT void on_main()
     }
 
     if ((bool) m_fts::value()) {
-        m_squawk_alert::publish(2u); //2 - emergency (FTS active)
+        m_squawk::publish(7500u); //7500 - Emergency (FTS activated)
     } else if ((uint32_t) m_health::value() == mandala::sys_health_warning) {
-        m_squawk_alert::publish(1u); //1 - lost link (system health warning)
+        m_squawk::publish(7600u); //7600 - lost link (system health warning)
     } else {
-        m_squawk_alert::publish(0u); //0 - normal
+        m_squawk::publish(0u); //0 - normal
     }
 
     if ((uint32_t) m_health::value() == mandala::sys_health_warning
