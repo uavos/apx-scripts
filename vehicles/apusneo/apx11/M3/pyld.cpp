@@ -40,7 +40,7 @@ PYLD_DATA _pyld = {};
 constexpr const float ANT_MULT{1.036f};
 constexpr const float ANT_OFFSET{-1.243f};
 
-bool auto_heat_state{1};
+bool auto_heat_state{true};
 
 //get
 using m_room = Mandala<mandala::sns::env::scr::s1>;
@@ -60,6 +60,35 @@ using m_ir_h = Mandala<mandala::est::env::usrb::b10>;   //ir heater
 using m_eo_h = Mandala<mandala::est::env::usrb::b11>;   //eo heater
 using m_lens_h = Mandala<mandala::est::env::usrb::b12>; //lens heater
 using m_pc_h = Mandala<mandala::est::env::usrb::b13>;   //comp heater
+
+struct Heater
+{
+    const int8_t t_on;
+    const int8_t t_off;
+    bool state{false};
+
+    bool update(float temp)
+    {
+        if (temp <= t_on)
+            state = true;
+        else if (temp >= t_off)
+            state = false;
+        //else: hysteresis - keep previous state
+
+        return state;
+    }
+
+    bool off()
+    {
+        state = false;
+        return state;
+    }
+};
+
+Heater heat_ir{-20, -10};
+Heater heat_eo{-10, 0};
+Heater heat_lens{-15, -5};
+Heater heat_pc{-20, -10};
 
 constexpr const uint16_t SCHEDULE_PYLD_TIMEOUT{1000};
 uint32_t pyld_tlm_timer{};
@@ -137,34 +166,15 @@ void send_pyld_telemetry()
     send(PORT_ID_GCU, &_pyld.header, sizeof(PYLD_DATA), true);
 }
 
-bool heater(int8_t temp, int8_t threshold_on, int8_t threshold_off)
-{
-    if (temp < threshold_on)
-        return true;
-
-    if (temp > threshold_off)
-        return false;
-
-    return false;
-}
-
 EXPORT void on_heater()
 {
-    if (auto_heat_state == 0) {
+    if (!auto_heat_state)
         return;
-    }
 
-    bool state = heater((int8_t) m_ir::value(), -20, -10);
-    m_ir_h::publish(state);
-
-    state = heater((int8_t) ((m_eo_1::value() + m_eo_2::value()) * 0.5f), -10, 0);
-    m_eo_h::publish(state);
-
-    state = heater((int8_t) m_lens::value(), -15, -5);
-    m_lens_h::publish(state);
-
-    state = heater((int8_t) m_pc::value(), -20, -10);
-    m_pc_h::publish(state);
+    m_ir_h::publish(heat_ir.update(m_ir::value()));
+    m_eo_h::publish(heat_eo.update((m_eo_1::value() + m_eo_2::value()) * 0.5f));
+    m_lens_h::publish(heat_lens.update(m_lens::value()));
+    m_pc_h::publish(heat_pc.update(m_pc::value()));
 }
 
 EXPORT void on_main()
