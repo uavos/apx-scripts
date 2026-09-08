@@ -32,8 +32,6 @@ using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
 
 using m_pwr_satcom = Mandala<mandala::ctr::env::pwr::satcom>;
 
-uint32_t squawk_normal = 0; //configured squawk code (published into w5 by the ADSB-TX node)
-
 int main()
 {
     //subscribe
@@ -57,7 +55,6 @@ int main()
     m_health();
 
     m_fts();
-    m_squawk();
 
     schedule_periodic(task("on_main"), TASK_MAIN_MS);
     schedule_periodic(task("on_heater"), TASK_HEATER_MS);
@@ -80,17 +77,13 @@ EXPORT void on_main()
         m_health::publish((uint32_t) mandala::sys_health_normal);
     }
 
-    uint32_t w5 = (uint32_t) m_squawk::value();
-    if (w5 != 7500u && w5 != 7600u) {
-        squawk_normal = w5; //remember the configured code set by the ADSB-TX node
-    }
-
+    // Override the squawk code only while an emergency is active; keep publishing
+    // it so the ADSB-TX node sees it as fresh. When this stops, that node
+    // restores the configured code on its own.
     if ((bool) m_fts::value()) {
         m_squawk::publish(7500u); //7500 - Emergency (FTS activated)
     } else if ((uint32_t) m_health::value() == mandala::sys_health_warning) {
         m_squawk::publish(7600u); //7600 - lost link (system health warning)
-    } else if (w5 == 7500u || w5 == 7600u) {
-        m_squawk::publish(squawk_normal); //emergency cleared - restore configured code
     }
 
     if ((uint32_t) m_health::value() == mandala::sys_health_warning
