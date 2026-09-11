@@ -45,6 +45,7 @@ int main()
     M_ERROR_COUNTER();
     M_MC_TOTAL();
 
+    MC_RESET::publish(true);
     MC_RESET::publish(false);
 
     schedule_periodic(task("on_main"), TASK_MAIN_MS);
