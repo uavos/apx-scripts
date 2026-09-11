@@ -6,7 +6,7 @@ constexpr const uint16_t SHOT_INTERVAL_MS{1000};
 constexpr const uint16_t SHOT_PULSE_MS{50};
 
 using CAM_RELEASE = Mandala<mandala::ctr::env::cam::shot>;
-using M_SHOTS_SENT = Mandala<mandala::est::env::usr::u4>;
+using M_SHOTS_SENT = Mandala<mandala::est::env::usrw::w4>;
 
 enum class State {
     wait_trigger,
@@ -44,7 +44,7 @@ EXPORT void on_main()
             CAM_RELEASE::publish((uint32_t) mandala::cam_shot_single);
 
             shots_sent++;
-            M_SHOTS_SENT::publish((float) shots_sent);
+            M_SHOTS_SENT::publish((uint32_t) shots_sent);
 
             m_state = State::pulse_active;
             m_stateTime = now;

@@ -13,9 +13,9 @@ using MC_BIT1 = Mandala<mandala::est::env::usrb::b3>;
 using MC_RESET = Mandala<mandala::est::env::usrb::b4>;
 
 //telemetry
-using M_RELEASE_COUNTER = Mandala<mandala::est::env::usr::u1>;
-using M_MC_COUNTER = Mandala<mandala::est::env::usr::u2>;
-using M_ERROR_COUNTER = Mandala<mandala::est::env::usr::u3>;
+using M_RELEASE_COUNTER = Mandala<mandala::est::env::usrw::w1>;
+using M_MC_COUNTER = Mandala<mandala::est::env::usrw::w2>;
+using M_ERROR_COUNTER = Mandala<mandala::est::env::usrw::w3>;
 
 enum class State {
     idle,
@@ -58,7 +58,7 @@ EXPORT void on_main()
     uint32_t camRelease = (uint32_t) CAM_RELEASE::value();
     if (camRelease == mandala::cam_shot_single && m_camReleaseOld == mandala::cam_shot_off) {
         RELEASE_COUNTER++;
-        M_RELEASE_COUNTER::publish((float) RELEASE_COUNTER);
+        M_RELEASE_COUNTER::publish((uint32_t) RELEASE_COUNTER);
 
         if (m_state == State::idle) {
             m_state = State::wait_check;
@@ -76,11 +76,11 @@ EXPORT void on_main()
             bool mcB2 = (bool) MC_BIT0::value();
             bool mcB3 = (bool) MC_BIT1::value();
             mc_counter = (uint8_t) ((mcB2 ? 1 : 0) | (mcB3 ? 2 : 0));
-            M_MC_COUNTER::publish((float) mc_counter);
+            M_MC_COUNTER::publish((uint32_t) mc_counter);
 
             if (mc_counter != 1) {
                 error_counter += (mc_counter == 0) ? 1 : (mc_counter - 1);
-                M_ERROR_COUNTER::publish((float) error_counter);
+                M_ERROR_COUNTER::publish((uint32_t) error_counter);
             }
 
             MC_RESET::publish(true);

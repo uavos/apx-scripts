@@ -11,7 +11,7 @@ Two companion scripts around the `ctr.env.cam.shot` camera trigger line:
 | Variable | Mandala | Direction | Description |
 |---|---|---|---|
 | `CAM_RELEASE` | `ctr.env.cam.shot` | out | camera release signal (`off`/`single`/`series`) |
-| `M_SHOTS_SENT` | `est.usr.u4` | out | telemetry: total shots triggered (`shots_sent`) |
+| `M_SHOTS_SENT` | `est.usrw.w4` | out | telemetry: total shots triggered (`shots_sent`) |
 
 Once a second, sets `CAM_RELEASE` to `single`, increments `shots_sent`, and 50ms later sets it
 back to `off`. Timing is tracked with `time_ms()` inside a single 100Hz polling task rather than
@@ -21,7 +21,7 @@ from within a running task leaks a handle each time.
 
 ## photo.cpp
 
-`CAM_RELEASE` is a fixed Mandala field; the `usrb`/`usr` indices below are examples, remap as needed:
+`CAM_RELEASE` is a fixed Mandala field; the `usrb`/`usrw` indices below are examples, remap as needed:
 
 | Variable | Mandala | Direction | Description |
 |---|---|---|---|
@@ -29,9 +29,9 @@ from within a running task leaks a handle each time.
 | `MC_BIT0` | `est.usrb.b2` | in | counter microchip feedback, bit0 |
 | `MC_BIT1` | `est.usrb.b3` | in | counter microchip feedback, bit1 |
 | `MC_RESET` | `est.usrb.b4` | out | pulse 1 then 0 to reset the counter microchip |
-| `M_RELEASE_COUNTER` | `est.usr.u1` | out | telemetry: total releases counted |
-| `M_MC_COUNTER` | `est.usr.u2` | out | telemetry: last microchip counter reading |
-| `M_ERROR_COUNTER` | `est.usr.u3` | out | telemetry: accumulated mismatch errors |
+| `M_RELEASE_COUNTER` | `est.usrw.w1` | out | telemetry: total releases counted |
+| `M_MC_COUNTER` | `est.usrw.w2` | out | telemetry: last microchip counter reading |
+| `M_ERROR_COUNTER` | `est.usrw.w3` | out | telemetry: accumulated mismatch errors |
 
 `CAM_RELEASE` pulses to `single` for only ~50ms, so the task polls at 100Hz (every 10ms) to
 reliably catch the edge. Every `off`→`single` transition increments `RELEASE_COUNTER`; the
