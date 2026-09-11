@@ -16,6 +16,7 @@ using MC_RESET = Mandala<mandala::est::env::usrb::b4>;
 using M_RELEASE_COUNTER = Mandala<mandala::est::env::usrw::w1>;
 using M_MC_COUNTER = Mandala<mandala::est::env::usrw::w2>;
 using M_ERROR_COUNTER = Mandala<mandala::est::env::usrw::w3>;
+using M_COMMANDS_SENT = Mandala<mandala::est::env::usrw::w4>;
 using M_MC_TOTAL = Mandala<mandala::est::env::usrw::w5>;
 
 enum class State {
@@ -43,7 +44,13 @@ int main()
     M_RELEASE_COUNTER();
     M_MC_COUNTER();
     M_ERROR_COUNTER();
+    M_COMMANDS_SENT();
     M_MC_TOTAL();
+
+    M_RELEASE_COUNTER::publish((uint32_t) 0);
+    M_ERROR_COUNTER::publish((uint32_t) 0);
+    M_COMMANDS_SENT::publish((uint32_t) 0);
+    M_MC_TOTAL::publish((uint32_t) 0);
 
     MC_RESET::publish(true);
     MC_RESET::publish(false);

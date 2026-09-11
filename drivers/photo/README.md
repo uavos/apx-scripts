@@ -32,15 +32,21 @@ from within a running task leaks a handle each time.
 | `M_RELEASE_COUNTER` | `est.usrw.w1` | out | telemetry: total releases counted |
 | `M_MC_COUNTER` | `est.usrw.w2` | out | telemetry: last microchip counter reading |
 | `M_ERROR_COUNTER` | `est.usrw.w3` | out | telemetry: accumulated mismatch errors |
+| `M_COMMANDS_SENT` | `est.usrw.w4` | out | telemetry: `commands_sent`, only zeroed at startup for now |
 | `M_MC_TOTAL` | `est.usrw.w5` | out | telemetry: cumulative sum of every microchip counter reading |
 
 `CAM_RELEASE` pulses to `single` for only ~50ms, so the task polls at 100Hz (every 10ms) to
 reliably catch the edge. Every `off`→`single` transition increments `RELEASE_COUNTER`; the
 `series` value is not otherwise handled by this script.
 
+On startup, `RELEASE_COUNTER`, `error_counter`, `commands_sent` and `mc_total` are explicitly
+published as `0` (`mc_counter`/`M_MC_COUNTER` is left alone, since it will reflect a real reading
+after the first check), and the microchip is reset once via `MC_RESET` so it starts from a known
+state alongside the counters.
+
 The microchip counter (`MC_BIT0`/`MC_BIT1`) is a free-running 2-bit counter (`00`, `01`, `10`,
 `11`, `00`, ...) that ticks once per physical release it detects. After each `CAM_RELEASE` edge,
-the script waits `CHECK_DELAY_MS` (60ms, longer than the ~50ms pulse so the check always happens
+the script waits `CHECK_DELAY_MS` (100ms, longer than the ~50ms pulse so the check always happens
 after it has fully finished) and then reads the microchip counter:
 
 - `1` — OK, only our own release was counted
