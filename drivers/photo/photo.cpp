@@ -16,6 +16,7 @@ using MC_RESET = Mandala<mandala::est::env::usrb::b4>;
 using M_RELEASE_COUNTER = Mandala<mandala::est::env::usrw::w1>;
 using M_MC_COUNTER = Mandala<mandala::est::env::usrw::w2>;
 using M_ERROR_COUNTER = Mandala<mandala::est::env::usrw::w3>;
+using M_MC_TOTAL = Mandala<mandala::est::env::usrw::w5>;
 
 enum class State {
     idle,
@@ -25,6 +26,7 @@ enum class State {
 uint32_t RELEASE_COUNTER{};
 uint32_t error_counter{};
 uint8_t mc_counter{};
+uint32_t mc_total{};
 
 uint32_t m_camReleaseOld{mandala::cam_shot_off};
 
@@ -41,6 +43,7 @@ int main()
     M_RELEASE_COUNTER();
     M_MC_COUNTER();
     M_ERROR_COUNTER();
+    M_MC_TOTAL();
 
     MC_RESET::publish(false);
 
@@ -77,6 +80,9 @@ EXPORT void on_main()
             bool mcB3 = (bool) MC_BIT1::value();
             mc_counter = (uint8_t) ((mcB2 ? 1 : 0) | (mcB3 ? 2 : 0));
             M_MC_COUNTER::publish((uint32_t) mc_counter);
+
+            mc_total += mc_counter;
+            M_MC_TOTAL::publish((uint32_t) mc_total);
 
             if (mc_counter != 1) {
                 error_counter += (mc_counter == 0) ? 1 : (mc_counter - 1);

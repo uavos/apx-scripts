@@ -32,6 +32,7 @@ from within a running task leaks a handle each time.
 | `M_RELEASE_COUNTER` | `est.usrw.w1` | out | telemetry: total releases counted |
 | `M_MC_COUNTER` | `est.usrw.w2` | out | telemetry: last microchip counter reading |
 | `M_ERROR_COUNTER` | `est.usrw.w3` | out | telemetry: accumulated mismatch errors |
+| `M_MC_TOTAL` | `est.usrw.w5` | out | telemetry: cumulative sum of every microchip counter reading |
 
 `CAM_RELEASE` pulses to `single` for only ~50ms, so the task polls at 100Hz (every 10ms) to
 reliably catch the edge. Every `off`→`single` transition increments `RELEASE_COUNTER`; the
@@ -47,7 +48,9 @@ after it has fully finished) and then reads the microchip counter:
 - `2` — 1 spurious extra count → +1 error
 - `3` — 2 spurious extra counts → +2 errors
 
-Errors are accumulated into `error_counter` and published as `M_ERROR_COUNTER`.
+Errors are accumulated into `error_counter` and published as `M_ERROR_COUNTER`. Each reading is
+also added to `mc_total` (published as `M_MC_TOTAL`), a running count of every increment the
+microchip has ever reported, independent of `RELEASE_COUNTER` or any mismatch.
 
 After the check, the script resets the microchip back to `0` by pulsing `MC_RESET` high then
 low, so the next release always starts the comparison from a known `0` baseline instead of
