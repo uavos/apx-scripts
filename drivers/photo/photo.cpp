@@ -2,7 +2,7 @@
 #include <apx.h>
 
 constexpr const uint8_t TASK_MAIN_MS{10};
-constexpr const uint16_t CHECK_DELAY_MS{60};
+constexpr const uint16_t CHECK_DELAY_MS{200};
 
 //inputs
 using CAM_RELEASE = Mandala<mandala::ctr::env::cam::shot>;
