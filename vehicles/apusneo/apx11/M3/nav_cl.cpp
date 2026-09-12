@@ -24,6 +24,9 @@ using m_sns_temp = Mandala<mandala::sns::nav::gyro::temp>; //gyro temp
 using m_ltt = Mandala<mandala::est::env::sys::ltt>;
 using m_health = Mandala<mandala::est::env::sys::health>;
 
+using m_fts = Mandala<mandala::est::env::usrb::b3>;
+using m_squawk = Mandala<mandala::est::env::usrw::w5>;
+
 using m_thr_cut = Mandala<mandala::cmd::nav::eng::cut>;
 using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
 
@@ -51,6 +54,8 @@ int main()
     m_ltt();
     m_health();
 
+    m_fts();
+
     schedule_periodic(task("on_main"), TASK_MAIN_MS);
     schedule_periodic(task("on_heater"), TASK_HEATER_MS);
 
@@ -70,6 +75,15 @@ EXPORT void on_main()
 
     if ((uint32_t) m_ltt::value() < 10) {
         m_health::publish((uint32_t) mandala::sys_health_normal);
+    }
+
+    // Override the squawk code only while an emergency is active; keep publishing
+    // it so the ADSB-TX node sees it as fresh. When this stops, that node
+    // restores the configured code on its own.
+    if ((bool) m_fts::value()) {
+        m_squawk::publish(7500u); //7500 - Emergency (FTS activated)
+    } else if ((uint32_t) m_health::value() == mandala::sys_health_warning) {
+        m_squawk::publish(7600u); //7600 - lost link (system health warning)
     }
 
     if ((uint32_t) m_health::value() == mandala::sys_health_warning
