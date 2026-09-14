@@ -55,7 +55,11 @@ using m_pcb = Mandala<mandala::sns::env::scr::s8>;
 using m_s10 = Mandala<mandala::sns::env::scr::s10>; //srv pos
 using m_s11 = Mandala<mandala::sns::env::scr::s11>; //srv temp
 
+using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
+using m_stage = Mandala<mandala::cmd::nav::proc::stage>;
+
 //set
+using pyld_ant = Mandala<mandala::ctr::env::tune::t1>;
 using m_ir_h = Mandala<mandala::est::env::usrb::b10>;   //ir heater
 using m_eo_h = Mandala<mandala::est::env::usrb::b11>;   //eo heater
 using m_lens_h = Mandala<mandala::est::env::usrb::b12>; //lens heater
@@ -106,6 +110,9 @@ int main()
 
     m_s10();
     m_s11();
+
+    m_mode();
+    m_stage();
 
     //header
     _pyld.header[0] = 0x4d;
@@ -179,6 +186,10 @@ EXPORT void on_heater()
 
 EXPORT void on_main()
 {
+    if ((uint32_t) m_mode::value() == mandala::proc_mode_LANDING && (uint32_t) m_stage::value() >= 4) {
+        pyld_ant::publish(0u);
+    }
+
     uint32_t now = time_ms();
     if (now - pyld_tlm_timer > SCHEDULE_PYLD_TIMEOUT) {
         pyld_tlm_timer = now;
