@@ -21,6 +21,7 @@ uint8_t esc_tbuf[PACK_SIZE_ESC] = {};
 
 using m_eng_temp = Mandala<mandala::sns::env::eng::temp>;
 using m_eng_volt = Mandala<mandala::sns::env::eng::voltage>;
+using m_eng_carent = Mandala<mandala::sns::env::eng::current>; // sns.eng.current
 using m_eng_rpm = Mandala<mandala::sns::env::eng::rpm>;
 
 using m_air = Mandala<mandala::est::env::usrb::b8>;
@@ -48,7 +49,7 @@ static constexpr const float AIR_SPD{15.f};  //[m/sec]
 //parachute release
 static constexpr const float GRAVITY_NORM{9.8f};   //[m/sec^2]
 static constexpr const float RELEASE_VDOWN{-0.5f}; //[m/sec]
-static constexpr const float RELEASE_ALT{10.f};    //[m]
+static constexpr const float RELEASE_ALT{5.f};     //[m]
 static constexpr const float G_MAX{2.5f};          //[G]
 
 uint32_t g_LastVspeedReleaseTime{0};
@@ -99,6 +100,7 @@ EXPORT void on_main()
     //save data to mandala
     m_eng_temp::publish((uint32_t) esc_data.temp);
     m_eng_volt::publish((float) esc_data.voltage);
+    m_eng_carent::publish((float) esc_data.current);
     m_eng_rpm::publish((uint32_t) esc_data.rpm);
 
     //printf("temp:%u", esc_data.temp);
@@ -157,7 +159,9 @@ EXPORT void on_ers()
     const bool m_air_val = (bool) m_air::value() || g_checkAirLockout;
     const bool lvs_release = checkVSpeedAndAltitudeRelease();
     const bool gmax_release = checkGForceRelease();
-    if (!g_onReleaseLockout && launch && m_air_val && (altitude < RELEASE_ALT) && (lvs_release || gmax_release)) {
+    const bool on_LANDING = ((uint32_t) m_mode::value() == mandala::proc_mode_LANDING);
+    if (!g_onReleaseLockout && launch && m_air_val && (altitude < RELEASE_ALT) && (lvs_release || gmax_release)
+        && on_LANDING) {
         g_onReleaseLockout = true;
         m_release::publish(true);
         printf("VM:REL ok\n");
