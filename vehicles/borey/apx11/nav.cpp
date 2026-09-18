@@ -1,7 +1,6 @@
 #include <apx.h>
 
 constexpr const uint16_t TASK_MAIN_MS{200}; //msec
-constexpr const uint16_t TASK_ERS_MS{50};   //msec
 
 constexpr const port_id_t PORT_ID_ESC{50};
 
