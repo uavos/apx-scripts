@@ -4,7 +4,7 @@ Two companion scripts around the `ctr.env.cam.shot` camera trigger line:
 
 - `nav_test.cpp` — periodically fires the camera trigger.
 - `photo.cpp` — counts releases and cross-checks them against external counter-microchip
-  feedback to detect missed or spurious releases.
+  feedback to detect missed, spurious, or uncommanded releases.
 
 ## nav_test.cpp
 
@@ -45,22 +45,28 @@ after the first check), and the microchip is reset once via `MC_RESET` so it sta
 state alongside the counters.
 
 The microchip counter (`MC_BIT0`/`MC_BIT1`) is a free-running 2-bit counter (`00`, `01`, `10`,
-`11`, `00`, ...) that ticks once per physical release it detects. After each `CAM_RELEASE` edge,
-the script waits `CHECK_DELAY_MS` (100ms, longer than the ~50ms pulse so the check always happens
-after it has fully finished) and then reads the microchip counter:
+`11`, `00`, ...) that ticks once per physical release it detects, and it is read and reset back
+to `0` every time the script processes a reading — so on any given tick it holds only whatever
+has happened since the last time it was checked.
 
-- `1` — OK, only our own release was counted
-- `0` — the microchip missed the release entirely → +1 error
-- `2` — 1 spurious extra count → +1 error
-- `3` — 2 spurious extra counts → +2 errors
+There are two independent paths that read and process it, both adding to `mc_total`
+(`M_MC_TOTAL`) and `error_counter` (`M_ERROR_COUNTER`):
 
-Errors are accumulated into `error_counter` and published as `M_ERROR_COUNTER`. Each reading is
-also added to `mc_total` (published as `M_MC_TOTAL`), a running count of every increment the
-microchip has ever reported, independent of `RELEASE_COUNTER` or any mismatch.
+- **Commanded path** (state `wait_check`): after a `CAM_RELEASE` `off`→`single` edge, the script
+  waits `CHECK_DELAY_MS` (100ms, longer than the ~50ms pulse so the check always happens after it
+  has fully finished) and reads the counter, expecting exactly `1`:
+  - `1` — OK, only our own release was counted
+  - `0` — the microchip missed the release entirely → +1 error
+  - `2` — 1 spurious extra count → +1 error
+  - `3` — 2 spurious extra counts → +2 errors
+- **Uncommanded path** (state `idle`): on every other tick — i.e. whenever no `CAM_RELEASE` is
+  currently pending a check — the script also reads the counter. Any nonzero reading here means
+  a photo happened with no command behind it at all, so the whole reading counts as error
+  (`error_counter += mc_counter`), on top of being added to `mc_total`.
 
-After the check, the script resets the microchip back to `0` by pulsing `MC_RESET` high then
-low, so the next release always starts the comparison from a known `0` baseline instead of
-letting the two counters drift out of sync over time. The 74HC393 only needs a ~24ns HIGH pulse
-on its reset input to clear (`tW`/`tPHL`/`trec` are all well under 1us per its datasheet), so the
-pulse is issued as two back-to-back publishes in the same task tick rather than held open across
-an extra cycle.
+Either way, once a reading is taken the microchip is immediately reset back to `0` by pulsing
+`MC_RESET` high then low, so the next reading (commanded or not) always starts from a known
+baseline instead of letting counters drift. The 74HC393 only needs a ~24ns HIGH pulse on its
+reset input to clear (`tW`/`tPHL`/`trec` are all well under 1us per its datasheet), so the pulse
+is issued as two back-to-back publishes in the same task tick rather than held open across an
+extra cycle.

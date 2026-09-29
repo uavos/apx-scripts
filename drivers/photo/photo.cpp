@@ -34,6 +34,19 @@ uint32_t m_camReleaseOld{mandala::cam_shot_off};
 State m_state{State::idle};
 uint32_t m_stateTime{};
 
+uint8_t readMcCounter()
+{
+    bool mcB2 = (bool) MC_BIT0::value();
+    bool mcB3 = (bool) MC_BIT1::value();
+    return (uint8_t) ((mcB2 ? 1 : 0) | (mcB3 ? 2 : 0));
+}
+
+void resetMc()
+{
+    MC_RESET::publish(true);
+    MC_RESET::publish(false);
+}
+
 int main()
 {
     CAM_RELEASE();
@@ -52,8 +65,7 @@ int main()
     M_COMMANDS_SENT::publish((uint32_t) 0);
     M_MC_TOTAL::publish((uint32_t) 0);
 
-    MC_RESET::publish(true);
-    MC_RESET::publish(false);
+    resetMc();
 
     schedule_periodic(task("on_main"), TASK_MAIN_MS);
 
@@ -80,13 +92,25 @@ EXPORT void on_main()
 
     switch (m_state) {
     case State::idle:
+        //no command pending right now, but keep watching the chip: any tick it's
+        //nonzero here is a photo that happened with no CAM_RELEASE behind it
+        mc_counter = readMcCounter();
+        if (mc_counter != 0) {
+            M_MC_COUNTER::publish((uint32_t) mc_counter);
+
+            mc_total += mc_counter;
+            M_MC_TOTAL::publish((uint32_t) mc_total);
+
+            error_counter += mc_counter;
+            M_ERROR_COUNTER::publish((uint32_t) error_counter);
+
+            resetMc();
+        }
         break;
 
     case State::wait_check:
         if (now - m_stateTime >= CHECK_DELAY_MS) {
-            bool mcB2 = (bool) MC_BIT0::value();
-            bool mcB3 = (bool) MC_BIT1::value();
-            mc_counter = (uint8_t) ((mcB2 ? 1 : 0) | (mcB3 ? 2 : 0));
+            mc_counter = readMcCounter();
             M_MC_COUNTER::publish((uint32_t) mc_counter);
 
             mc_total += mc_counter;
@@ -97,8 +121,7 @@ EXPORT void on_main()
                 M_ERROR_COUNTER::publish((uint32_t) error_counter);
             }
 
-            MC_RESET::publish(true);
-            MC_RESET::publish(false);
+            resetMc();
 
             m_state = State::idle;
         }
