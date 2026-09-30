@@ -65,6 +65,10 @@ using m_eo_h = Mandala<mandala::est::env::usrb::b11>;   //eo heater
 using m_lens_h = Mandala<mandala::est::env::usrb::b12>; //lens heater
 using m_pc_h = Mandala<mandala::est::env::usrb::b13>;   //comp heater
 
+//power
+using m_pwr_ap = Mandala<mandala::ctr::env::pwr::ap>;
+using m_pwr_payload = Mandala<mandala::ctr::env::pwr::payload>;
+
 struct Heater
 {
     const int8_t t_on;
@@ -97,6 +101,10 @@ Heater heat_pc{-20, -10};
 constexpr const uint16_t SCHEDULE_PYLD_TIMEOUT{1000};
 uint32_t pyld_tlm_timer{};
 
+constexpr const uint32_t PWR_CHECK_DELAY_MS{15000};
+uint32_t start_time{};
+bool pwr_checked{false};
+
 int main()
 {
     m_room();
@@ -113,6 +121,10 @@ int main()
 
     m_mode();
     m_stage();
+
+    m_pwr_ap();
+
+    start_time = time_ms();
 
     //header
     _pyld.header[0] = 0x4d;
@@ -148,6 +160,17 @@ uint8_t calcTelemetryCRC(const uint8_t *data, uint8_t size)
             crc = crc & 0x80 ? (uint8_t) (crc << 1) ^ 0x31 : (uint8_t) (crc << 1);
     }
     return crc;
+}
+
+void power_payload()
+{
+    if (pwr_checked || time_ms() - start_time < PWR_CHECK_DELAY_MS)
+        return;
+
+    pwr_checked = true;
+
+    if (m_pwr_ap::value() == 0)
+        m_pwr_payload::publish(1u);
 }
 
 void send_pyld_telemetry()
@@ -189,6 +212,8 @@ EXPORT void on_main()
     if ((uint32_t) m_mode::value() == mandala::proc_mode_LANDING && (uint32_t) m_stage::value() >= 4) {
         pyld_ant::publish(0u);
     }
+
+    power_payload();
 
     uint32_t now = time_ms();
     if (now - pyld_tlm_timer > SCHEDULE_PYLD_TIMEOUT) {
