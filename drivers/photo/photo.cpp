@@ -1,18 +1,14 @@
-//v1.1 photo/camera release counter script
 #include <apx.h>
 
 constexpr const uint8_t TASK_MAIN_MS{10};
 constexpr const uint16_t CHECK_DELAY_MS{100};
 
-//inputs
 using CAM_RELEASE = Mandala<mandala::ctr::env::cam::shot>;
 using MC_BIT0 = Mandala<mandala::est::env::usrb::b2>;
 using MC_BIT1 = Mandala<mandala::est::env::usrb::b3>;
 
-//output
 using MC_RESET = Mandala<mandala::est::env::usrb::b4>;
 
-//telemetry
 using M_RELEASE_COUNTER = Mandala<mandala::est::env::usrw::w1>;
 using M_MC_COUNTER = Mandala<mandala::est::env::usrw::w2>;
 using M_ERROR_COUNTER = Mandala<mandala::est::env::usrw::w3>;
@@ -22,6 +18,7 @@ using M_MC_TOTAL = Mandala<mandala::est::env::usrw::w5>;
 enum class State {
     idle,
     wait_check,
+    wait_reset_confirm,
 };
 
 uint32_t RELEASE_COUNTER{};
@@ -66,6 +63,8 @@ int main()
     M_MC_TOTAL::publish((uint32_t) 0);
 
     resetMc();
+    m_state = State::wait_reset_confirm;
+    m_stateTime = time_ms();
 
     schedule_periodic(task("on_main"), TASK_MAIN_MS);
 
@@ -92,8 +91,6 @@ EXPORT void on_main()
 
     switch (m_state) {
     case State::idle:
-        //no command pending right now, but keep watching the chip: any tick it's
-        //nonzero here is a photo that happened with no CAM_RELEASE behind it
         mc_counter = readMcCounter();
         if (mc_counter != 0) {
             M_MC_COUNTER::publish((uint32_t) mc_counter);
@@ -105,6 +102,8 @@ EXPORT void on_main()
             M_ERROR_COUNTER::publish((uint32_t) error_counter);
 
             resetMc();
+            m_state = State::wait_reset_confirm;
+            m_stateTime = now;
         }
         break;
 
@@ -122,7 +121,15 @@ EXPORT void on_main()
             }
 
             resetMc();
+            m_state = State::wait_reset_confirm;
+            m_stateTime = now;
+        }
+        break;
 
+    case State::wait_reset_confirm:
+        if (readMcCounter() == 0) {
+            m_state = State::idle;
+        } else if (now - m_stateTime >= CHECK_DELAY_MS) {
             m_state = State::idle;
         }
         break;

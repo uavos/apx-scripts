@@ -1,25 +1,7 @@
-# APX scripts for camera release counting
+# APX script for camera release counting
 
-Two companion scripts around the `ctr.env.cam.shot` camera trigger line:
-
-- `nav_test.cpp` — periodically fires the camera trigger.
-- `photo.cpp` — counts releases and cross-checks them against external counter-microchip
-  feedback to detect missed, spurious, or uncommanded releases.
-
-## nav_test.cpp
-
-| Variable | Mandala | Direction | Description |
-|---|---|---|---|
-| `CAM_RELEASE` | `ctr.env.cam.shot` | out | camera release signal (`off`/`single`/`series`) |
-| `M_SHOTS_SENT` | `est.usrw.w4` | out | telemetry: total shots triggered (`shots_sent`) |
-
-Once a second, sets `CAM_RELEASE` to `single`, increments `shots_sent`, and 50ms later sets it
-back to `off`. Timing is tracked with `time_ms()` inside a single 100Hz polling task rather than
-scheduling a second one-shot task per pulse, since `task()` is meant to be called once per named
-function at startup (every script in this repo follows that convention) — calling it repeatedly
-from within a running task leaks a handle each time.
-
-## photo.cpp
+`photo.cpp` counts releases of the `ctr.env.cam.shot` camera trigger line and cross-checks them
+against external counter-microchip feedback to detect missed, spurious, or uncommanded releases.
 
 `CAM_RELEASE` is a fixed Mandala field; the `usrb`/`usrw` indices below are examples, remap as needed:
 
@@ -64,9 +46,15 @@ There are two independent paths that read and process it, both adding to `mc_tot
   a photo happened with no command behind it at all, so the whole reading counts as error
   (`error_counter += mc_counter`), on top of being added to `mc_total`.
 
-Either way, once a reading is taken the microchip is immediately reset back to `0` by pulsing
-`MC_RESET` high then low, so the next reading (commanded or not) always starts from a known
-baseline instead of letting counters drift. The 74HC393 only needs a ~24ns HIGH pulse on its
-reset input to clear (`tW`/`tPHL`/`trec` are all well under 1us per its datasheet), so the pulse
-is issued as two back-to-back publishes in the same task tick rather than held open across an
-extra cycle.
+Either way, once a reading is taken the microchip is reset back to `0` by pulsing `MC_RESET` high
+then low (two back-to-back publishes in the same tick — the 74HC393 itself only needs a ~24ns
+HIGH pulse to clear per its datasheet), so the next reading always starts from a known baseline.
+
+That reset is a bus/GPIO round-trip though, not instant from the script's point of view, so after
+issuing it the script enters a third state, `wait_reset_confirm`, and polls the counter without
+processing anything until it actually reads back `0` (or `CHECK_DELAY_MS` passes, as a fallback
+so it can't get stuck here forever). Only then does it return to `idle` and resume treating a
+nonzero reading as a new event. Without this gate, a reset that takes more than one 10ms tick to
+physically land would have its own not-yet-cleared leftover value picked up again by the
+uncommanded path on every tick until it actually clears, inflating a single real release into
+several extra counts.
