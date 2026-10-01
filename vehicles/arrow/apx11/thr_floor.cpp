@@ -108,7 +108,6 @@ void release(uint32_t now)
     below = false;
     time_release = now;
     m_dbg_hold::publish(0.f);
-    printf("VM:thr floor OFF\n");
 }
 
 EXPORT void on_thr()
@@ -180,5 +179,4 @@ EXPORT void on_thr()
     m_ovr::publish(true);
     hold = true;
     m_dbg_hold::publish(1.f);
-    printf("VM:thr floor ON %.0f\n", floor_thr * 100.f);
 }
