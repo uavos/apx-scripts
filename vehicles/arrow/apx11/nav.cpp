@@ -5,12 +5,13 @@
 // engine runs), tanks 1 and 3 are pumped into tank 2 by pumps 1 and 3.
 //
 // Fuel algorithm:
-//   stage 1 - keep tank 2 full (above TANK_2_KEEPFULL), draining tanks 1 and 3
-//             equally: pump from the fuller tank, one pump at a time, each
-//             pump runs at least DELAY_PUMP seconds before switching;
+//   stage 1 - keep tank 2 full: start pumping when it drops below
+//             TANK_2_KEEPFULL, stop when it reaches TANK_2_FULL. Tanks 1 and 3
+//             are drained equally: pump from the fuller tank, one pump at a
+//             time, each pump runs at least DELAY_PUMP seconds before switching;
 //   stage 2 - tanks 1 and 3 are near empty: drain the rest of tank 1
-//             (pump 1 runs TIME_TO_EMPTY seconds total, only while tank 2 is
-//             not full);
+//             (pump 1 runs TIME_TO_EMPTY seconds total, with the same
+//             TANK_2_KEEPFULL / TANK_2_FULL rule for tank 2);
 //   stage 3 - the same for tank 3;
 //   stage 4 - tanks 1 and 3 are empty, pumps 1 and 3 off, engine uses tank 2.
 
@@ -38,6 +39,7 @@ const float V_MAX3{16.7f}; //liters
 
 const float CRITICAL_LOW{7.0f};    //%, reaching this level considered empty tank
 const float TANK_2_KEEPFULL{95.f}; //%, if below, start pumping fuel in tank 2
+const float TANK_2_FULL{99.f};     //%, stop pumping fuel in tank 2 when reached
 
 uint8_t snd_fuel_buf[MSG_FUEL_SIZE] = {};
 
@@ -53,6 +55,7 @@ const uint8_t DELAY_PUMP{15};    //pump works for 15 sec before switching to ano
 const uint8_t TIME_TO_EMPTY{60}; //sec. Time to drain tank from critical to empty level
 
 uint32_t drain_time_ms{0}; //accumulated pump run time while draining the rest of a tank
+bool tank2_filling{false};  //tank 2 is between TANK_2_KEEPFULL and TANK_2_FULL, being filled
 bool fuel_mc_old{false};
 bool ignition_old{false};
 
@@ -358,6 +361,7 @@ EXPORT void on_ers()
         m_air::publish(true);
         pump_stage = 1; //restart fuel algorithm after launch
         drain_time_ms = 0;
+        tank2_filling = false;
         printf("VM:Start AIR\n");
     }
 
@@ -509,9 +513,20 @@ void turn_on_pump_3()
     }
 }
 
+//start filling tank 2 below TANK_2_KEEPFULL, stop at TANK_2_FULL
+bool tank2_needs_fuel()
+{
+    if (fuel[1].percent < TANK_2_KEEPFULL) {
+        tank2_filling = true;
+    } else if (fuel[1].percent >= TANK_2_FULL) {
+        tank2_filling = false;
+    }
+    return tank2_filling;
+}
+
 void pump_stage_1() //keep tank 2 full, drain tanks 1 and 3 equally
 {
-    if (fuel[1].percent >= TANK_2_KEEPFULL) { //tank 2 is full, wait until it drops below again
+    if (!tank2_needs_fuel()) { //tank 2 is full, wait until it drops below again
         turn_off_pump_1();
         turn_off_pump_3();
         return;
@@ -546,7 +561,7 @@ bool drain_rest(bool pump_on)
         return true;
     }
 
-    if (fuel[1].percent >= TANK_2_KEEPFULL) { //tank 2 is full, pause draining
+    if (!tank2_needs_fuel()) { //tank 2 is full, pause draining
         turn_off_pump_1();
         turn_off_pump_3();
         return false;
@@ -568,7 +583,7 @@ void pump_stage_2() //drain the rest of tank 1
         return;
     }
 
-    if (fuel[1].percent < TANK_2_KEEPFULL) {
+    if (tank2_filling) {
         m_pump3::publish(false);
         m_pump1::publish(true);
     }
@@ -583,7 +598,7 @@ void pump_stage_3() //drain the rest of tank 3
         return;
     }
 
-    if (fuel[1].percent < TANK_2_KEEPFULL) {
+    if (tank2_filling) {
         m_pump1::publish(false);
         m_pump3::publish(true);
     }
