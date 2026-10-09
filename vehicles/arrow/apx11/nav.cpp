@@ -205,7 +205,6 @@ int main()
     m_geo_safety();
 
     //ers
-    m_ers1();
     m_ers2();
     m_ers3();
 
