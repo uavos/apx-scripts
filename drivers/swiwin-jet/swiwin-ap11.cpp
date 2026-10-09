@@ -103,32 +103,6 @@ using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
 using m_eng_mode = Mandala<mandala::cmd::nav::eng::mode>;
 
 using m_thr = Mandala<mandala::ctr::nav::eng::thr>;
-using m_cut = Mandala<mandala::cmd::nav::eng::cut>;
-using m_altitude = Mandala<mandala::est::nav::pos::altitude>;
-//---------------------------------------------------------------
-// Altitude dependent minimum throttle (throttle floor).
-//
-// The turbine must not idle too low at high altitude. Regardless of what the
-// autopilot (TECS) commands, the throttle sent to the ECU is never below the
-// floor computed from the current altitude (MSL):
-//   altitude <= FLOOR_ALT_MIN          -> floor = 0 (autopilot is free)
-//   altitude >= FLOOR_ALT_MAX          -> floor = FLOOR_THR_MAX
-//   in between                         -> linear interpolation
-// The floor is not applied when the throttle is cut (cmd.eng.cut).
-const float FLOOR_ALT_MIN{5000.f};  //[m] below this altitude no floor
-const float FLOOR_ALT_MAX{10000.f}; //[m] at and above this altitude floor = FLOOR_THR_MAX
-const float FLOOR_THR_MAX{0.25f};   //[0..1] throttle floor at FLOOR_ALT_MAX
-
-float thr_floor(float altitude)
-{
-    if (altitude <= FLOOR_ALT_MIN) {
-        return 0.f;
-    }
-    if (altitude >= FLOOR_ALT_MAX) {
-        return FLOOR_THR_MAX;
-    }
-    return FLOOR_THR_MAX * (altitude - FLOOR_ALT_MIN) / (FLOOR_ALT_MAX - FLOOR_ALT_MIN);
-}
 //---------------------------------------------------------------
 
 //---------------------------------------------------------------
@@ -372,8 +346,6 @@ int main()
     m_pwr_ign(); //subscribe
     m_thr();
     m_eng_mode();
-    m_cut();
-    m_altitude();
 
     return 0;
 }
@@ -494,14 +466,7 @@ EXPORT void on_task()
 
     //stop and ctr_throttle
     if (on_power_ignition) {
-        float thr = m_thr::value();
-        if (!(bool) m_cut::value()) {
-            const float floor_thr = thr_floor(m_altitude::value());
-            if (thr < floor_thr) {
-                thr = floor_thr; //hold the turbine on the altitude dependent floor
-            }
-        }
-        set_throttle((int32_t) (thr * 1000));
+        set_throttle((int32_t) (m_thr::value() * 1000));
     } else {
         set_switch(eSWState::eSW_STOP);
         start_eng = false;

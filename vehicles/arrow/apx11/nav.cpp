@@ -81,6 +81,28 @@ _fuel fuel[3] = {_fuel(V_MAX1), _fuel(V_MAX2), _fuel(V_MAX3)};
 using m_pwr_eng = Mandala<mandala::ctr::env::pwr::eng>;
 using m_eng_cut = Mandala<mandala::cmd::nav::eng::cut>;
 
+//Throttle offset for the turbine at high altitude.
+//The turbine must not idle too low at high altitude. The autopilot throttle
+//(ctr.eng.thr, 0..1) is rescaled into the range [floor..1], where the floor
+//depends on altitude (MSL):
+//  altitude <= THR_ALT_MIN -> floor = 0 (autopilot throttle unchanged)
+//  altitude >= THR_ALT_MAX -> floor = THR_FLOOR_MAX
+//  in between              -> linear interpolation
+//  out = floor + thr * (1 - floor)
+//So 0% from the autopilot becomes the floor, 100% stays 100%, and every
+//change of the autopilot throttle still moves the turbine (no dead zone).
+//The result is published to ctr.tune.t1, which must be mapped to the turbine
+//throttle output instead of ctr.eng.thr. The offset is not applied when the
+//throttle is cut (cmd.eng.cut) or the engine power is off.
+static constexpr const float THR_ALT_MIN{5000.f};   //[m] below this altitude no offset
+static constexpr const float THR_ALT_MAX{10000.f};  //[m] at and above this altitude floor = THR_FLOOR_MAX
+static constexpr const float THR_FLOOR_MAX{0.25f};  //[0..1] throttle floor at THR_ALT_MAX
+static constexpr const uint16_t TASK_THR_MS{100};   //msec
+
+using m_thr = Mandala<mandala::ctr::nav::eng::thr>;     //autopilot throttle
+using m_thr_out = Mandala<mandala::ctr::env::tune::t1>; //throttle sent to the turbine
+using m_thr_floor = Mandala<mandala::est::env::usr::u4>; //current floor [%] for telemetry
+
 //fuel
 using m_fuel1 = Mandala<mandala::est::env::usr::u5>;
 using m_fuel2 = Mandala<mandala::est::env::usr::u6>;
@@ -175,6 +197,14 @@ int main()
 
     task("drop");
     schedule_periodic(task("on_drop"), 1000);
+
+    //throttle
+    m_thr();
+    m_thr_out();
+    m_thr_floor();
+    m_eng_cut();
+    m_thr("on_thr");                              //recalculate on every autopilot throttle update
+    schedule_periodic(task("on_thr"), TASK_THR_MS); //...and periodically as altitude changes
 
     receive(port_fuel_id, "on_fuel_serial");
 
@@ -468,6 +498,40 @@ EXPORT void on_launch()
         m_eng_cut::publish(true);
         m_pwr_eng::publish(false);
     }
+}
+
+//throttle floor [0..1] for the given altitude, linear between THR_ALT_MIN and THR_ALT_MAX
+float thr_floor(float altitude)
+{
+    if (altitude <= THR_ALT_MIN) {
+        return 0.f;
+    }
+    if (altitude >= THR_ALT_MAX) {
+        return THR_FLOOR_MAX;
+    }
+    return THR_FLOOR_MAX * (altitude - THR_ALT_MIN) / (THR_ALT_MAX - THR_ALT_MIN);
+}
+
+EXPORT void on_thr()
+{
+    float thr = m_thr::value();
+    float floor_thr = 0.f;
+
+    const bool engine_on = (bool) m_pwr_eng::value() && !(bool) m_eng_cut::value();
+
+    if (engine_on) {
+        floor_thr = thr_floor(m_altitude::value());
+        thr = floor_thr + thr * (1.f - floor_thr); //rescale [0..1] into [floor..1]
+    }
+
+    if (thr < 0.f) {
+        thr = 0.f;
+    } else if (thr > 1.f) {
+        thr = 1.f;
+    }
+
+    m_thr_out::publish(thr);
+    m_thr_floor::publish(floor_thr * 100.f);
 }
 
 EXPORT uint8_t calcCRC(const uint8_t *buf, size_t size)
