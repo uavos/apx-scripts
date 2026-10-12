@@ -92,8 +92,9 @@ using m_eng_cut = Mandala<mandala::cmd::nav::eng::cut>;
 //So 0% from the autopilot becomes the floor, 100% stays 100%, and every
 //change of the autopilot throttle still moves the turbine (no dead zone).
 //The result is published to ctr.tune.t1, which must be mapped to the turbine
-//throttle output instead of ctr.eng.thr. The offset is not applied when the
-//throttle is cut (cmd.eng.cut) or the engine power is off.
+//throttle output instead of ctr.eng.thr. The offset is applied only in the
+//automatic flight modes (UAV, WPT, STBY) with the engine running and no
+//throttle cut; otherwise the autopilot throttle is passed through unchanged.
 static constexpr const float THR_ALT_MIN{5000.f};   //[m] below this altitude no offset
 static constexpr const float THR_ALT_MAX{10000.f};  //[m] at and above this altitude floor = THR_FLOOR_MAX
 static constexpr const float THR_FLOOR_MAX{0.25f};  //[0..1] throttle floor at THR_ALT_MAX
@@ -199,7 +200,6 @@ int main()
     schedule_periodic(task("on_drop"), 1000);
 
     //throttle
-    m_thr();
     m_thr_out();
     m_thr_floor();
     m_eng_cut();
@@ -516,9 +516,12 @@ EXPORT void on_thr()
     float thr = m_thr::value();
     float floor_thr = 0.f;
 
+    const uint32_t mode = (uint32_t) m_mode::value();
+    const bool auto_mode = (mode == mandala::proc_mode_UAV) || (mode == mandala::proc_mode_WPT)
+                           || (mode == mandala::proc_mode_STBY);
     const bool engine_on = (bool) m_pwr_eng::value() && !(bool) m_eng_cut::value();
 
-    if (engine_on) {
+    if (auto_mode && engine_on) {
         floor_thr = thr_floor(m_altitude::value());
         thr = floor_thr + thr * (1.f - floor_thr); //rescale [0..1] into [floor..1]
     }
