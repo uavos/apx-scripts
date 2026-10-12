@@ -32,7 +32,7 @@ using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
 
 using m_pwr_satcom = Mandala<mandala::ctr::env::pwr::satcom>;
 
-bool squawk_emergency = false; //true while 7500/7600 is being published
+bool squawk_emergency = false; //true while 7700/7600 is being published
 
 int main()
 {
@@ -80,7 +80,7 @@ EXPORT void on_main()
     }
 
     if ((bool) m_fts::value()) {
-        m_squawk::publish(7500u); //7500 - Emergency (FTS activated)
+        m_squawk::publish(7700u); //7700 - Emergency (FTS activated)
         squawk_emergency = true;
     } else if ((uint32_t) m_health::value() == mandala::sys_health_warning) {
         m_squawk::publish(7600u); //7600 - lost link (system health warning)

@@ -235,7 +235,6 @@ int main()
     m_geo_safety();
 
     //ers
-    m_ers1();
     m_ers2();
     m_ers3();
 
@@ -441,8 +440,8 @@ EXPORT void on_ers()
     //minimum safe altitude for parachute release
     if (g_checkAirLockout && !g_lowAltLockout && altitude < ERS2_ALT) {
         g_lowAltLockout = true;
+        WAIT_TIME = (ers1 || g_onERS) ? 0 : 2500;
         g_onERS = true;
-        WAIT_TIME = 2500;
         m_ers1::publish(true);
         printf("VM:Low alt. ERS on\n");
     }
