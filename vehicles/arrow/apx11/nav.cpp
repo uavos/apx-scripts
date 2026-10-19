@@ -7,13 +7,18 @@
 // Fuel algorithm:
 //   stage 1 - keep tank 2 full: start pumping when it drops below
 //             TANK_2_KEEPFULL, stop when it reaches TANK_2_FULL. Tanks 1 and 3
-//             are drained equally: pump from the fuller tank, one pump at a
-//             time, each pump runs at least DELAY_PUMP seconds before switching;
-//   stage 2 - tanks 1 and 3 are near empty: drain the rest of tank 1
-//             (pump 1 runs TIME_TO_EMPTY seconds total, with the same
-//             TANK_2_KEEPFULL / TANK_2_FULL rule for tank 2);
-//   stage 3 - the same for tank 3;
-//   stage 4 - tanks 1 and 3 are empty, pumps 1 and 3 off, engine uses tank 2.
+//             are drained in parallel, tank 1 is kept ahead of tank 3: the lead
+//             grows from 0 at full tanks to TANK_13_LEAD at TANK_13_LEAD_LEVEL
+//             average level (55% / 45%) and stays constant below it. Pump 1 runs
+//             while tank 1 is more than the lead ahead, otherwise pump 3 runs. One pump at a time,
+//             each pump runs at least DELAY_PUMP seconds before switching;
+//   stage 2 - tank 3 is near empty: drain the rest of it (pump 3 runs
+//             TIME_TO_EMPTY seconds total), tank 1 keeps its reserve
+//             (about TANK_13_LEAD + CRITICAL_LOW, ~3 liters);
+//   stage 3 - pumps 1 and 3 off, engine uses tank 2 down to TANK_2_POINT;
+//   stage 4 - drain the tank 1 reserve, keeping tank 2 = TANK_12_RATIO * tank 1,
+//             then drain the rest of tank 1 (pump 1 runs TIME_TO_EMPTY seconds);
+//   stage 5 - tanks 1 and 3 are empty, pumps 1 and 3 off, engine uses tank 2.
 
 #include <apx.h>
 
@@ -40,6 +45,10 @@ const float V_MAX3{16.7f}; //liters
 const float CRITICAL_LOW{7.0f};    //%, reaching this level considered empty tank
 const float TANK_2_KEEPFULL{95.f}; //%, if below, start pumping fuel in tank 2
 const float TANK_2_FULL{99.f};     //%, stop pumping fuel in tank 2 when reached
+const float TANK_13_LEAD{10.f};       //%, tank 1 is kept this much above tank 3 (55/45 at mid level)
+const float TANK_13_LEAD_LEVEL{50.f}; //%, average level of tanks 1 and 3 at which the full lead is reached
+const float TANK_2_POINT{45.f};    //%, when tank 2 drops to this level, start draining tank 1 reserve
+const float TANK_12_RATIO{2.f};    //keep tank 2 = ratio * tank 1 while draining the tank 1 reserve
 
 uint8_t snd_fuel_buf[MSG_FUEL_SIZE] = {};
 
@@ -578,7 +587,18 @@ bool tank2_needs_fuel()
     return tank2_filling;
 }
 
-void pump_stage_1() //keep tank 2 full, drain tanks 1 and 3 equally
+//required lead of tank 1 over tank 3: grows linearly from 0 at full tanks to
+//TANK_13_LEAD at TANK_13_LEAD_LEVEL average level, then stays constant
+float tank13_lead()
+{
+    const float avrg = (fuel[0].percent + fuel[2].percent) / 2.f;
+    if (avrg <= TANK_13_LEAD_LEVEL) {
+        return TANK_13_LEAD;
+    }
+    return TANK_13_LEAD * (100.f - avrg) / (100.f - TANK_13_LEAD_LEVEL);
+}
+
+void pump_stage_1() //keep tank 2 full, drain tanks 1 and 3 keeping tank 1 ahead of tank 3
 {
     if (!tank2_needs_fuel()) { //tank 2 is full, wait until it drops below again
         turn_off_pump_1();
@@ -586,21 +606,14 @@ void pump_stage_1() //keep tank 2 full, drain tanks 1 and 3 equally
         return;
     }
 
-    const bool tank1_empty = fuel[0].percent < CRITICAL_LOW;
-    const bool tank3_empty = fuel[2].percent < CRITICAL_LOW;
-
-    if (tank1_empty && tank3_empty) { //both tanks near empty, drain the rest
+    if (fuel[2].percent < CRITICAL_LOW) { //tank 3 near empty, drain the rest of it
         pump_stage = 2;
         drain_time_ms = 0;
         printf("fuel stage: 2");
         return;
     }
 
-    if (tank1_empty) { //only tank 3 has fuel left
-        turn_on_pump_3();
-    } else if (tank3_empty) { //only tank 1 has fuel left
-        turn_on_pump_1();
-    } else if (fuel[0].percent > fuel[2].percent) { //pump from the fuller tank
+    if (fuel[0].percent - fuel[2].percent > tank13_lead()) { //tank 1 is too far ahead
         turn_on_pump_1();
     } else {
         turn_on_pump_3();
@@ -627,28 +640,12 @@ bool drain_rest(bool pump_on)
     return false;
 }
 
-void pump_stage_2() //drain the rest of tank 1
-{
-    if (drain_rest((bool) m_pump1::value())) {
-        turn_off_pump_1();
-        pump_stage = 3;
-        drain_time_ms = 0;
-        printf("fuel stage: 3");
-        return;
-    }
-
-    if (tank2_filling) {
-        m_pump3::publish(false);
-        m_pump1::publish(true);
-    }
-}
-
-void pump_stage_3() //drain the rest of tank 3
+void pump_stage_2() //drain the rest of tank 3, tank 1 keeps its reserve
 {
     if (drain_rest((bool) m_pump3::value())) {
         turn_off_pump_3();
-        pump_stage = 4;
-        printf("fuel stage: 4");
+        pump_stage = 3;
+        printf("fuel stage: 3");
         return;
     }
 
@@ -658,7 +655,43 @@ void pump_stage_3() //drain the rest of tank 3
     }
 }
 
-void pump_stage_4() //tanks 1 and 3 are empty, engine uses tank 2
+void pump_stage_3() //tank 3 is empty, engine uses tank 2 down to TANK_2_POINT
+{
+    turn_off_pump_1();
+    turn_off_pump_3();
+
+    if (fuel[1].percent < TANK_2_POINT) {
+        pump_stage = 4;
+        drain_time_ms = 0;
+        printf("fuel stage: 4");
+    }
+}
+
+void pump_stage_4() //drain the tank 1 reserve, keeping tank 2 = TANK_12_RATIO * tank 1
+{
+    if (fuel[0].percent >= CRITICAL_LOW) {
+        if (fuel[1].percent > fuel[0].percent * TANK_12_RATIO) {
+            turn_off_pump_1();
+        } else {
+            turn_on_pump_1();
+        }
+        return;
+    }
+
+    if (drain_rest((bool) m_pump1::value())) { //tank 1 near empty, drain the rest of it
+        turn_off_pump_1();
+        pump_stage = 5;
+        printf("fuel stage: 5");
+        return;
+    }
+
+    if (tank2_filling) {
+        m_pump3::publish(false);
+        m_pump1::publish(true);
+    }
+}
+
+void pump_stage_5() //tanks 1 and 3 are empty, engine uses tank 2
 {
     turn_off_pump_1();
     turn_off_pump_3();
@@ -680,6 +713,9 @@ void fuel_auto_control()
         break;
     case 4:
         pump_stage_4();
+        break;
+    case 5:
+        pump_stage_5();
         break;
     }
 }
