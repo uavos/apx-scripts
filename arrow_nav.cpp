@@ -1,0 +1,883 @@
+//Fuel control protocol
+//UART: 19200 8 N 1
+//
+// Fuel system: engine takes fuel from tank 2 (pump 2 is always on while the
+// engine runs), tanks 1 and 3 are pumped into tank 2 by pumps 1 and 3.
+//
+// Fuel algorithm:
+//   stage 1 - keep tank 2 full: start pumping when it drops below
+//             TANK_2_KEEPFULL, stop when it reaches TANK_2_FULL. Tanks 1 and 3
+//             are drained in parallel, tank 1 is kept ahead of tank 3: the lead
+//             grows from 0 at full tanks to TANK_13_LEAD at TANK_13_LEAD_LEVEL
+//             average level (55% / 45%) and stays constant below it. Pump 1 runs
+//             while tank 1 is more than the lead ahead, otherwise pump 3 runs. One pump at a time,
+//             each pump runs at least DELAY_PUMP seconds before switching;
+//   stage 2 - tank 3 is near empty: drain the rest of it (pump 3 runs
+//             TIME_TO_EMPTY seconds total), tank 1 keeps its reserve
+//             (about TANK_13_LEAD + CRITICAL_LOW, ~3 liters);
+//   stage 3 - pumps 1 and 3 off, engine uses tank 2 down to TANK_2_POINT;
+//   stage 4 - drain the tank 1 reserve, keeping tank 2 = TANK_12_RATIO * tank 1,
+//             then drain the rest of tank 1 (pump 1 runs TIME_TO_EMPTY seconds);
+//   stage 5 - tanks 1 and 3 are empty, pumps 1 and 3 off, engine uses tank 2.
+
+#include <apx.h>
+
+//#define FUEL_SIM
+#define SIM_SPEED 0.02f
+
+static constexpr const port_id_t port_fuel_id{12};
+
+const uint16_t TASK_MAIN_MS{100}; //msec
+const uint16_t TASK_ERS_MS{100};  //msec
+const uint16_t TASK_FUEL_MS{500}; //msec
+
+//FUEL
+const uint8_t ADR_FUEL_SENS1{85}; //75
+const uint8_t ADR_FUEL_SENS2{86}; //76
+const uint8_t ADR_FUEL_SENS3{87}; //77
+
+const uint8_t MSG_FUEL_SIZE{9}; //FUEL
+
+const float V_MAX1{16.7f}; //liters
+const float V_MAX2{16.7f}; //liters
+const float V_MAX3{16.7f}; //liters
+
+const float CRITICAL_LOW{7.0f};    //%, reaching this level considered empty tank
+const float TANK_2_KEEPFULL{95.f}; //%, if below, start pumping fuel in tank 2
+const float TANK_2_FULL{99.f};     //%, stop pumping fuel in tank 2 when reached
+const float TANK_13_LEAD{10.f};       //%, tank 1 is kept this much above tank 3 (55/45 at mid level)
+const float TANK_13_LEAD_LEVEL{50.f}; //%, average level of tanks 1 and 3 at which the full lead is reached
+const float TANK_2_POINT{45.f};    //%, when tank 2 drops to this level, start draining tank 1 reserve
+const float TANK_12_RATIO{2.f};    //keep tank 2 = ratio * tank 1 while draining the tank 1 reserve
+
+uint8_t snd_fuel_buf[MSG_FUEL_SIZE] = {};
+
+uint8_t ADR_FUEL[3] = {ADR_FUEL_SENS1, ADR_FUEL_SENS2, ADR_FUEL_SENS3};
+uint8_t idx_fuel_array = 0;
+
+uint32_t startTimerPumpON;
+
+uint8_t pump_stage{1}; //default stage
+
+const uint8_t TIME_SA{5};        //sec
+const uint8_t DELAY_PUMP{15};    //pump works for 15 sec before switching to another
+const uint8_t TIME_TO_EMPTY{60}; //sec. Time to drain tank from critical to empty level
+
+uint32_t drain_time_ms{0}; //accumulated pump run time while draining the rest of a tank
+bool tank2_filling{false};  //tank 2 is between TANK_2_KEEPFULL and TANK_2_FULL, being filled
+bool fuel_mc_old{false};
+bool ignition_old{false};
+
+struct _fuel
+{
+    _fuel(float v_max)
+        : V_MAX(v_max)
+        , liters(0.f)
+        , percent(0.f)
+        , time_ans(0)
+    {}
+
+    void set_percent(float p)
+    {
+        percent = p;
+        liters = (p * V_MAX) / 100.f;
+        time_ans = time_ms();
+    }
+
+    float V_MAX;   // max tank liters
+    float liters;  // liters
+    float percent; // percent
+    uint32_t time_ans;
+};
+
+_fuel fuel[3] = {_fuel(V_MAX1), _fuel(V_MAX2), _fuel(V_MAX3)};
+
+//Engine
+using m_pwr_eng = Mandala<mandala::ctr::env::pwr::eng>;
+using m_eng_cut = Mandala<mandala::cmd::nav::eng::cut>;
+
+//Throttle offset for the turbine at high altitude.
+//The turbine must not idle too low at high altitude. The autopilot throttle
+//(ctr.eng.thr, 0..1) is rescaled into the range [floor..1], where the floor
+//depends on altitude (MSL):
+//  altitude <= THR_ALT_MIN -> floor = 0 (autopilot throttle unchanged)
+//  altitude >= THR_ALT_MAX -> floor = THR_FLOOR_MAX
+//  in between              -> linear interpolation
+//  out = floor + thr * (1 - floor)
+//So 0% from the autopilot becomes the floor, 100% stays 100%, and every
+//change of the autopilot throttle still moves the turbine (no dead zone).
+//The result is published to ctr.tune.t1, which must be mapped to the turbine
+//throttle output instead of ctr.eng.thr. The offset is applied only in the
+//automatic flight modes (UAV, WPT, STBY) with the engine running and no
+//throttle cut; otherwise the autopilot throttle is passed through unchanged.
+static constexpr const float THR_ALT_MIN{3000.f};   //[m] below this altitude no offset
+static constexpr const float THR_ALT_MAX{6000.f};   //[m] at and above this altitude floor = THR_FLOOR_MAX
+static constexpr const float THR_FLOOR_MAX{0.15f};  //[0..1] throttle floor at THR_ALT_MAX
+static constexpr const uint16_t TASK_THR_MS{100};   //msec
+
+using m_thr = Mandala<mandala::ctr::nav::eng::thr>;     //autopilot throttle
+using m_thr_out = Mandala<mandala::ctr::env::tune::t1>; //throttle sent to the turbine
+using m_thr_floor = Mandala<mandala::est::env::usr::u4>; //current floor [%] for telemetry
+
+//fuel
+using m_fuel1 = Mandala<mandala::est::env::usr::u5>;
+using m_fuel2 = Mandala<mandala::est::env::usr::u6>;
+using m_fuel3 = Mandala<mandala::est::env::usr::u7>;
+
+using m_fuel_p = Mandala<mandala::sns::env::fuel::level>;
+using m_fuel_l = Mandala<mandala::est::env::usr::u8>;
+
+using m_pump1 = Mandala<mandala::ctr::env::sw::sw5>;
+using m_pump2 = Mandala<mandala::ctr::env::sw::sw6>;
+using m_pump3 = Mandala<mandala::ctr::env::sw::sw7>;
+
+using m_warn1 = Mandala<mandala::est::env::usrb::b5>;
+using m_warn2 = Mandala<mandala::est::env::usrb::b6>;
+using m_warn3 = Mandala<mandala::est::env::usrb::b7>;
+
+//using m_error1 = Mandala<mandala::est::env::usrc::c5>;
+//using m_error2 = Mandala<mandala::est::env::usrc::c6>;
+//using m_error3 = Mandala<mandala::est::env::usrc::c7>;
+
+using m_fuel_mc = Mandala<mandala::ctr::env::sw::sw8>; //manual control
+
+//datalink
+using m_ltt = Mandala<mandala::est::env::sys::ltt>;
+using m_health = Mandala<mandala::est::env::sys::health>;
+using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
+using m_stage = Mandala<mandala::cmd::nav::proc::stage>;
+using m_action = Mandala<mandala::cmd::nav::proc::action>;
+using m_geo_safety = Mandala<mandala::est::nav::geo::safe>;
+
+//ers
+using m_ers1 = Mandala<mandala::ctr::env::ers::launch>;
+using m_ers2 = Mandala<mandala::est::env::usrb::b1>;
+using m_ers3 = Mandala<mandala::ctr::env::ers::rel>;
+
+using m_air = Mandala<mandala::est::env::usrb::b8>;
+
+using m_roll = Mandala<mandala::est::nav::att::roll>;
+using m_pitch = Mandala<mandala::est::nav::att::pitch>;
+using m_airspeed = Mandala<mandala::est::nav::air::airspeed>;
+using m_altitude = Mandala<mandala::est::nav::pos::altitude>;
+using m_vspeed = Mandala<mandala::est::nav::pos::vspeed>;
+
+using m_ax = Mandala<mandala::est::nav::acc::x>;
+using m_ay = Mandala<mandala::est::nav::acc::y>;
+using m_az = Mandala<mandala::est::nav::acc::z>;
+
+//drop
+bool proc_start{false};
+
+uint32_t uav_timer{};
+uint32_t next_timer{};
+
+bool on_uav{false};
+bool on_next{false};
+
+static constexpr const uint32_t UAV_TIMEOUT = 3000;
+static constexpr const uint32_t NEXT_TIMEOUT = 2000;
+
+//emergency parachute deployment
+static constexpr const float ERS_VDOWN{-30.f}; //[m/sec]
+static constexpr const float ERS_ROLL{70.f};   //[dec]
+static constexpr const float ERS_PITCH{50.f};  //[dec]
+
+//parachute release
+static constexpr const float GRAVITY_NORM{9.8f};   //[m/sec^2]
+static constexpr const float RELEASE_VDOWN{-0.5f}; //[m/sec]
+static constexpr const float G_MAX{5.5f};          //[G]
+
+static constexpr const float AIR_ALT{500.f};  //[m]
+static constexpr const float AIR_SPD{20.f};   //[m/sec]
+static constexpr const float ERS2_ALT{200.f}; //[m]
+static constexpr const float ERS3_ALT{10.f};  //[m]
+
+uint16_t WAIT_TIME{3000}; //[msec]
+bool g_onERS{false};      //flag that ERS1 was activated
+
+uint32_t g_lastRollPitchTime{0};
+uint32_t g_lastVspeedTime{0};
+uint32_t g_LastVspeedReleaseTime{0};
+uint32_t g_LastMaxRollInTakeoffModeTime{0};
+
+bool g_checkAirLockout{false};
+bool g_lowAltLockout{false};
+bool g_AttAndVSpeedLockout{false};
+bool g_onERS2Lockout{false};
+bool g_onERS3Lockout{false};
+
+bool g_targetMode{false};
+
+int main()
+{
+    schedule_periodic(task("on_main"), TASK_MAIN_MS);
+    schedule_periodic(task("on_ers"), TASK_ERS_MS);
+    schedule_periodic(task("on_fuel"), TASK_FUEL_MS);
+
+    task("drop");
+    schedule_periodic(task("on_drop"), 1000);
+
+    //throttle
+    m_thr_out();
+    m_thr_floor();
+    m_eng_cut();
+    m_thr("on_thr");                              //recalculate on every autopilot throttle update
+    schedule_periodic(task("on_thr"), TASK_THR_MS); //...and periodically as altitude changes
+
+    receive(port_fuel_id, "on_fuel_serial");
+
+    //fuel
+    m_fuel_p();
+    m_fuel_l();
+
+    m_fuel1();
+    m_fuel2();
+    m_fuel3();
+
+    m_pump1();
+    m_pump2();
+    m_pump3();
+
+    m_warn1();
+    m_warn2();
+    m_warn3();
+
+    m_fuel_mc();
+
+    //datalink
+    m_ltt();
+    m_health();
+    m_mode();
+    m_stage();
+    m_action();
+    m_geo_safety();
+
+    //ers
+    m_ers2();
+    m_ers3();
+
+    m_pwr_eng();
+    m_air();
+
+    m_roll();
+    m_pitch();
+    m_airspeed();
+    m_altitude();
+    m_vspeed();
+    m_ax();
+    m_ay();
+    m_az();
+
+    uint32_t now = time_ms();
+
+    g_lastRollPitchTime = now;
+    g_lastVspeedTime = now;
+    g_LastVspeedReleaseTime = now;
+
+    m_ers1::publish(false);
+    m_ers2::publish(false);
+    m_ers3::publish(false);
+
+    m_air::publish(false);
+
+    m_ers1("on_launch"); // subscribe
+
+    return 0;
+}
+
+EXPORT void on_main()
+{
+    //datalink
+    if ((uint32_t) m_ltt::value() < 10) {
+        m_health::publish((uint32_t) mandala::sys_health_normal);
+    }
+
+    if ((uint32_t) m_health::value() == mandala::sys_health_warning
+        && (uint32_t) m_mode::value() != mandala::proc_mode_TAXI) {
+        m_mode::publish((uint32_t) mandala::proc_mode_LANDING);
+    }
+
+    //geofence
+    if ((uint32_t) m_geo_safety::value() == mandala::geo_safe_critical
+        && (uint32_t) m_mode::value() != (uint32_t) mandala::proc_mode_LANDING) {
+        m_mode::publish((uint32_t) mandala::proc_mode_LANDING);
+        printf("VM:Geofence critical\n");
+    }
+}
+
+EXPORT void on_drop()
+{
+    if (!proc_start) {
+        return;
+    }
+
+    uint32_t now = time_ms();
+
+    if (!on_uav && now - uav_timer >= UAV_TIMEOUT) {
+        printf("UAV...\n");
+        m_mode::publish((uint32_t) mandala::proc_mode_UAV);
+        next_timer = now;
+        on_uav = true;
+        return;
+    }
+
+    if (!on_next && on_uav && now - next_timer >= NEXT_TIMEOUT) {
+        printf("Next...\n");
+        m_action::publish((uint32_t) mandala::proc_action_next);
+
+        on_next = true;
+        proc_start = false;
+    }
+}
+
+EXPORT void drop()
+{
+    printf("Start proc drop...\n");
+    on_uav = false;
+    on_next = false;
+
+    uint32_t now = time_ms();
+    uav_timer = now;
+    next_timer = now;
+
+    proc_start = true;
+}
+
+bool checkRollAndPitch()
+{
+    const float roll = fabs(m_roll::value() * R2D);
+    const float pitch = fabs(m_pitch::value() * R2D);
+    const uint32_t now = time_ms();
+
+    if (roll > ERS_ROLL || pitch > ERS_PITCH) {
+        return (now - g_lastRollPitchTime > 2000);
+    }
+    g_lastRollPitchTime = now;
+
+    return false;
+}
+
+bool checkVSpeed()
+{
+    const float vspeed = m_vspeed::value();
+    const uint32_t now = time_ms();
+
+    if (vspeed < ERS_VDOWN) {
+        return (now - g_lastVspeedTime > 1000);
+    }
+    g_lastVspeedTime = now;
+
+    return false;
+}
+
+bool checkTakeOFFSafety()
+{
+    const bool mode = (uint8_t) m_mode::value() == mandala::proc_mode_TAKEOFF;
+    const bool roll = fabs(m_roll::value() * R2D) > ERS_ROLL;
+    const bool vspeed = m_vspeed::value() < -1.f;
+    const uint32_t now = time_ms();
+
+    if (mode && roll && vspeed) {
+        return (now - g_LastMaxRollInTakeoffModeTime > 1000);
+    }
+    g_LastMaxRollInTakeoffModeTime = now;
+
+    return false;
+}
+
+bool checkVSpeedAndAltitudeRelease()
+{
+    const float vspeed = m_vspeed::value();
+    const float altitude = m_altitude::value();
+    const uint32_t now = time_ms();
+
+    if ((vspeed > RELEASE_VDOWN) && (altitude < ERS3_ALT)) {
+        return (now - g_LastVspeedReleaseTime > 500);
+    }
+    g_LastVspeedReleaseTime = now;
+
+    return false;
+}
+
+bool checkGForceRelease()
+{
+    float altitude = (float) m_altitude::value();
+
+    float Ax = (float) m_ax::value() / GRAVITY_NORM;
+    float Ay = (float) m_ay::value() / GRAVITY_NORM;
+    float Az = (float) m_az::value() / GRAVITY_NORM;
+
+    float val = sqrt(Ax * Ax + Ay * Ay + Az * Az);
+
+    if (altitude < ERS3_ALT && val > G_MAX) {
+        printf("VM:G_VAL %.2f\n", val);
+        return true;
+    }
+
+    return false;
+}
+
+EXPORT void on_ers()
+{
+    if ((uint32_t) m_mode::value() == mandala::proc_mode_TAXI) {
+        return;
+    }
+
+    if ((uint32_t) m_mode::value() == mandala::proc_mode_UAV && (uint32_t) m_stage::value() == 2) {
+        g_targetMode = true;
+        return;
+    }
+
+    if (g_targetMode && m_vspeed::value() > 0) {
+        g_targetMode = false;
+    }
+
+    if (g_targetMode) {
+        return;
+    }
+
+    const float altitude = (float) m_altitude::value();
+    const float airspeed = (float) m_airspeed::value();
+    const bool ers1 = (bool) m_ers1::value();
+
+    //check air state
+    if (!g_checkAirLockout && altitude > AIR_ALT && airspeed > AIR_SPD) {
+        g_checkAirLockout = true;
+
+        g_lowAltLockout = false;
+        g_AttAndVSpeedLockout = false;
+        g_onERS2Lockout = false;
+        g_onERS3Lockout = false;
+        g_targetMode = false;
+
+        m_air::publish(true);
+        pump_stage = 1; //restart fuel algorithm after launch
+        drain_time_ms = 0;
+        tank2_filling = false;
+        printf("VM:Start AIR\n");
+    }
+
+    //minimum safe altitude for parachute release
+    if (g_checkAirLockout && !g_lowAltLockout && altitude < ERS2_ALT) {
+        g_lowAltLockout = true;
+        WAIT_TIME = (ers1 || g_onERS) ? 0 : 2500;
+        g_onERS = true;
+        m_ers1::publish(true);
+        printf("VM:Low alt. ERS on\n");
+    }
+
+    const bool m_air_val = (bool) m_air::value() || g_checkAirLockout;
+    const bool is_rp = checkRollAndPitch();
+    const bool is_vspd = checkVSpeed();
+
+    const bool ers = (m_air_val && !g_AttAndVSpeedLockout && (is_rp || is_vspd))
+                     || checkTakeOFFSafety();
+
+    if (ers) {
+        g_AttAndVSpeedLockout = true;
+        g_onERS = true;
+        m_ers1::publish(true);
+        if (altitude < ERS2_ALT) {
+            WAIT_TIME = 100;
+        }
+
+        printf("VM:ERS1 on\n");
+        printf("VM:rp %d\n", is_rp);
+        printf("VM:vspd %d\n", is_vspd);
+    }
+
+    if (ers1 || g_onERS) {
+        g_onERS = true;
+        sleep(WAIT_TIME);
+        WAIT_TIME = 0;
+
+        //main parachute
+        if (!g_onERS2Lockout && altitude < ERS2_ALT) {
+            g_onERS2Lockout = true;
+            m_ers2::publish(true);
+            printf("VM:ERS2 on\n");
+        }
+
+        //release parachute
+        const bool lvs_release = checkVSpeedAndAltitudeRelease();
+        const bool gmax_release = checkGForceRelease();
+        if (g_onERS2Lockout && !g_onERS3Lockout && (lvs_release || gmax_release)
+            && (altitude < ERS3_ALT)) {
+            g_onERS3Lockout = true;
+            m_ers3::publish(true);
+            printf("VM:ERS3 ok\n");
+            printf("VM:LVS %u\n", lvs_release);
+            printf("VM:GMAX %u\n", gmax_release);
+        }
+    }
+}
+
+EXPORT void on_launch()
+{
+    if ((bool) m_ers1::value()) {
+        sleep(100);
+        m_eng_cut::publish(true);
+        m_pwr_eng::publish(false);
+    }
+}
+
+//throttle floor [0..1] for the given altitude, linear between THR_ALT_MIN and THR_ALT_MAX
+float thr_floor(float altitude)
+{
+    if (altitude <= THR_ALT_MIN) {
+        return 0.f;
+    }
+    if (altitude >= THR_ALT_MAX) {
+        return THR_FLOOR_MAX;
+    }
+    return THR_FLOOR_MAX * (altitude - THR_ALT_MIN) / (THR_ALT_MAX - THR_ALT_MIN);
+}
+
+EXPORT void on_thr()
+{
+    float thr = m_thr::value();
+    float floor_thr = 0.f;
+
+    const uint32_t mode = (uint32_t) m_mode::value();
+    const bool auto_mode = (mode == mandala::proc_mode_UAV) || (mode == mandala::proc_mode_WPT)
+                           || (mode == mandala::proc_mode_STBY);
+    const bool engine_on = (bool) m_pwr_eng::value() && !(bool) m_eng_cut::value();
+
+    if (auto_mode && engine_on) {
+        floor_thr = thr_floor(m_altitude::value());
+        thr = floor_thr + thr * (1.f - floor_thr); //rescale [0..1] into [floor..1]
+    }
+
+    if (thr < 0.f) {
+        thr = 0.f;
+    } else if (thr > 1.f) {
+        thr = 1.f;
+    }
+
+    m_thr_out::publish(thr);
+    m_thr_floor::publish(floor_thr * 100.f);
+}
+
+EXPORT uint8_t calcCRC(const uint8_t *buf, size_t size)
+{
+    uint8_t crc = 0x00;
+
+    for (uint8_t j = 0; j < size; j++) {
+        uint8_t i = buf[j] ^ crc;
+        crc = 0;
+        if (i & 0x01)
+            crc ^= 0x5e;
+        if (i & 0x02)
+            crc ^= 0xbc;
+        if (i & 0x04)
+            crc ^= 0x61;
+        if (i & 0x08)
+            crc ^= 0xc2;
+        if (i & 0x10)
+            crc ^= 0x9d;
+        if (i & 0x20)
+            crc ^= 0x23;
+        if (i & 0x40)
+            crc ^= 0x46;
+        if (i & 0x80)
+            crc ^= 0x8c;
+    }
+    return crc % 256;
+}
+
+void turn_off_all_pumps()
+{
+    m_pump1::publish(false);
+    m_pump2::publish(false);
+    m_pump3::publish(false);
+}
+
+void turn_on_all_pumps()
+{
+    m_pump1::publish(true);
+    m_pump2::publish(true);
+    m_pump3::publish(true);
+}
+
+void turn_off_pump_1()
+{
+    m_pump1::publish(false);
+}
+
+void turn_off_pump_3()
+{
+    m_pump3::publish(false);
+}
+
+void turn_on_pump_1()
+{
+    if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
+        if ((bool) m_pump3::value()) { //if pump 3 is on, turn it off before turning on pump 1
+            turn_off_pump_3();
+            return;
+        }
+        if (!(bool) m_pump1::value()) { //if pump 1 is not on, turn it on and start timer
+            m_pump1::publish(true);
+            startTimerPumpON = time_ms();
+        }
+    }
+}
+
+void turn_on_pump_2()
+{
+    m_pump2::publish(true);
+}
+
+void turn_on_pump_3()
+{
+    if (time_ms() > startTimerPumpON + DELAY_PUMP * 1000) {
+        if ((bool) m_pump1::value()) { //if pump 1 is on, turn it off before turning on pump 3
+            turn_off_pump_1();
+            return;
+        }
+        if (!(bool) m_pump3::value()) { //if pump 3 is not on, turn it on and start timer
+            m_pump3::publish(true);
+            startTimerPumpON = time_ms();
+        }
+    }
+}
+
+//start filling tank 2 below TANK_2_KEEPFULL, stop at TANK_2_FULL
+bool tank2_needs_fuel()
+{
+    if (fuel[1].percent < TANK_2_KEEPFULL) {
+        tank2_filling = true;
+    } else if (fuel[1].percent >= TANK_2_FULL) {
+        tank2_filling = false;
+    }
+    return tank2_filling;
+}
+
+//required lead of tank 1 over tank 3: grows linearly from 0 at full tanks to
+//TANK_13_LEAD at TANK_13_LEAD_LEVEL average level, then stays constant
+float tank13_lead()
+{
+    const float avrg = (fuel[0].percent + fuel[2].percent) / 2.f;
+    if (avrg <= TANK_13_LEAD_LEVEL) {
+        return TANK_13_LEAD;
+    }
+    return TANK_13_LEAD * (100.f - avrg) / (100.f - TANK_13_LEAD_LEVEL);
+}
+
+void pump_stage_1() //keep tank 2 full, drain tanks 1 and 3 keeping tank 1 ahead of tank 3
+{
+    if (!tank2_needs_fuel()) { //tank 2 is full, wait until it drops below again
+        turn_off_pump_1();
+        turn_off_pump_3();
+        return;
+    }
+
+    if (fuel[2].percent < CRITICAL_LOW) { //tank 3 near empty, drain the rest of it
+        pump_stage = 2;
+        drain_time_ms = 0;
+        printf("fuel stage: 2");
+        return;
+    }
+
+    if (fuel[0].percent - fuel[2].percent > tank13_lead()) { //tank 1 is too far ahead
+        turn_on_pump_1();
+    } else {
+        turn_on_pump_3();
+    }
+}
+
+//run the pump for TIME_TO_EMPTY seconds in total to drain the tank below sensor range,
+//only while tank 2 can take fuel. Returns true when done.
+bool drain_rest(bool pump_on)
+{
+    if (drain_time_ms >= (uint32_t) TIME_TO_EMPTY * 1000) {
+        return true;
+    }
+
+    if (!tank2_needs_fuel()) { //tank 2 is full, pause draining
+        turn_off_pump_1();
+        turn_off_pump_3();
+        return false;
+    }
+
+    if (pump_on) {
+        drain_time_ms += TASK_FUEL_MS;
+    }
+    return false;
+}
+
+void pump_stage_2() //drain the rest of tank 3, tank 1 keeps its reserve
+{
+    if (drain_rest((bool) m_pump3::value())) {
+        turn_off_pump_3();
+        pump_stage = 3;
+        printf("fuel stage: 3");
+        return;
+    }
+
+    if (tank2_filling) {
+        m_pump1::publish(false);
+        m_pump3::publish(true);
+    }
+}
+
+void pump_stage_3() //tank 3 is empty, engine uses tank 2 down to TANK_2_POINT
+{
+    turn_off_pump_1();
+    turn_off_pump_3();
+
+    if (fuel[1].percent < TANK_2_POINT) {
+        pump_stage = 4;
+        drain_time_ms = 0;
+        printf("fuel stage: 4");
+    }
+}
+
+void pump_stage_4() //drain the tank 1 reserve, keeping tank 2 = TANK_12_RATIO * tank 1
+{
+    if (fuel[0].percent >= CRITICAL_LOW) {
+        if (fuel[1].percent > fuel[0].percent * TANK_12_RATIO) {
+            turn_off_pump_1();
+        } else {
+            turn_on_pump_1();
+        }
+        return;
+    }
+
+    if (drain_rest((bool) m_pump1::value())) { //tank 1 near empty, drain the rest of it
+        turn_off_pump_1();
+        pump_stage = 5;
+        printf("fuel stage: 5");
+        return;
+    }
+
+    if (tank2_filling) {
+        m_pump3::publish(false);
+        m_pump1::publish(true);
+    }
+}
+
+void pump_stage_5() //tanks 1 and 3 are empty, engine uses tank 2
+{
+    turn_off_pump_1();
+    turn_off_pump_3();
+}
+
+void fuel_auto_control()
+{
+    turn_on_pump_2(); //keep pump2 on while engine is on
+
+    switch (pump_stage) {
+    case 1:
+        pump_stage_1();
+        break;
+    case 2:
+        pump_stage_2();
+        break;
+    case 3:
+        pump_stage_3();
+        break;
+    case 4:
+        pump_stage_4();
+        break;
+    case 5:
+        pump_stage_5();
+        break;
+    }
+}
+
+void check_answer_time()
+{
+    uint32_t now = time_ms();
+
+    m_warn1::publish((fuel[0].time_ans + TIME_SA * 1000 < now) ? true : false);
+    m_warn2::publish((fuel[1].time_ans + TIME_SA * 1000 < now) ? true : false);
+    m_warn3::publish((fuel[2].time_ans + TIME_SA * 1000 < now) ? true : false);
+}
+
+EXPORT void on_fuel()
+{
+    check_answer_time();
+
+    m_fuel1::publish(fuel[0].liters);
+    m_fuel2::publish(fuel[1].liters);
+    m_fuel3::publish(fuel[2].liters);
+
+    m_fuel_l::publish(fuel[0].liters + fuel[1].liters + fuel[2].liters);
+    m_fuel_p::publish((fuel[0].percent + fuel[1].percent + fuel[2].percent) / 3.f);
+
+    const bool ignition = (bool) m_pwr_eng::value();
+    const bool fuel_mc = (bool) m_fuel_mc::value();
+    const bool ers = (bool) m_ers1::value();
+
+    if (ers) {
+        turn_off_all_pumps();
+    } else {
+        if (ignition != ignition_old) {
+            ignition_old = ignition;
+            if (!ignition) {
+                turn_off_all_pumps();
+            }
+        }
+
+        if (fuel_mc != fuel_mc_old) {
+            fuel_mc_old = fuel_mc;
+            if (fuel_mc) {
+                printf("Manual fuel ON");
+            } else {
+                turn_off_all_pumps();
+                printf("Manual fuel OFF");
+            }
+        }
+
+        if (!fuel_mc && ignition) {
+            fuel_auto_control();
+        }
+    }
+
+    //request fuel sensors
+    snd_fuel_buf[0] = 0x31;
+    snd_fuel_buf[2] = 0x06;
+
+    snd_fuel_buf[1] = ADR_FUEL[idx_fuel_array++];
+    if (idx_fuel_array == 3) {
+        idx_fuel_array = 0;
+    }
+
+    snd_fuel_buf[3] = calcCRC(snd_fuel_buf, 3);
+    send(port_fuel_id, snd_fuel_buf, 4, true);
+}
+
+EXPORT void on_fuel_serial(const uint8_t *data, size_t size)
+{
+    //typePack(0)[0x3E] adr(1) fmt(2) data(3) crc(8)
+    if (size != MSG_FUEL_SIZE) {
+        return;
+    }
+
+    if ((data[0] != 0x3E) || (data[2] != 0x06)) {
+        return;
+    }
+
+    if (data[8] != calcCRC(data, 8)) {
+        return;
+    }
+
+    //uint32_t error = data[3];
+    //if (error < 150) //error codes start from 150
+    //    error = 0;
+
+    float fuel_percent = (float) (data[4] | (data[5] << 8)) / 10.f;
+
+    if (data[1] == ADR_FUEL[0]) {
+        fuel[0].set_percent(fuel_percent);
+        //m_error1::publish(error);
+    } else if (data[1] == ADR_FUEL[1]) {
+        fuel[1].set_percent(fuel_percent);
+        //m_error2::publish(error);
+    } else if (data[1] == ADR_FUEL[2]) {
+        fuel[2].set_percent(fuel_percent);
+        //m_error3::publish(error);
+    }
+}
