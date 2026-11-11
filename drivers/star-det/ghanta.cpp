@@ -2,7 +2,7 @@
 
 constexpr const char *txt_dev = "STAR";
 
-constexpr const port_id_t PORT_ID_STAR{60}; //placeholder, real port id is not assigned yet
+constexpr const port_id_t PORT_ID_STAR{12};
 
 constexpr const uint16_t TASK_MAIN_MS{500}; //2Hz
 
@@ -105,5 +105,5 @@ EXPORT void on_main()
 
     _star.crc = calcCRC16((const uint8_t *) &_star.len, sizeof(STAR_DATA) - sizeof(_star.mark) - sizeof(_star.crc));
 
-    send(PORT_ID_STAR, &_star, sizeof(STAR_DATA), true);
+    send(PORT_ID_STAR, &_star, sizeof(STAR_DATA), false); //interface only, not to the ground
 }
