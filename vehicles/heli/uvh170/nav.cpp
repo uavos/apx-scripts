@@ -37,6 +37,7 @@ using m_health = Mandala<mandala::est::env::sys::health>;
 
 //ERS
 using m_vspeed = Mandala<mandala::est::nav::pos::vspeed>;
+using m_altitude = Mandala<mandala::est::nav::pos::altitude>;
 using m_ers_launch = Mandala<mandala::ctr::env::ers::launch>;
 using m_ers_block = Mandala<mandala::sns::env::ers::block>;
 using m_eng_hgl = Mandala<mandala::cmd::nav::eng::hgl>;
@@ -245,6 +246,8 @@ int main()
     m_reg_yaw();
     m_health();
     m_ltt();
+    m_vspeed();
+    m_altitude();
     m_ers_launch();
     m_ers_block();
     m_eng_hgl();
@@ -290,7 +293,7 @@ EXPORT void on_main()
 EXPORT void on_start_eng()
 {
     //power ignition logic
-    bool on_power_ignition = (bool) m_pwr_ign::value();
+    bool on_power_ignition = (bool) m_pwr_eng::value();
     if (on_power_ignition && (uint32_t) m_sw_starter::value()) {
         starter_active = true;
     }
