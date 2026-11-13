@@ -35,8 +35,16 @@ using m_uvhpu_vsys = Mandala<mandala::sns::env::pwr::vsys>;
 using m_ltt = Mandala<mandala::est::env::sys::ltt>;
 using m_health = Mandala<mandala::est::env::sys::health>;
 
+//ERS
+using m_vspeed = Mandala<mandala::est::nav::pos::vspeed>;
+using m_ers_launch = Mandala<mandala::ctr::env::ers::launch>;
+using m_ers_block = Mandala<mandala::sns::env::ers::block>;
+using m_eng_hgl = Mandala<mandala::cmd::nav::eng::hgl>;
+using m_eng_cut = Mandala<mandala::cmd::nav::eng::cut>;
+using m_inair = Mandala<mandala::cmd::nav::ins::inair>;
+
 //Engine
-using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
+using m_pwr_eng = Mandala<mandala::ctr::env::pwr::eng>;
 using m_sw_starter = Mandala<mandala::ctr::nav::eng::starter>;
 using m_eng_ctr = Mandala<mandala::ctr::nav::eng::thr>;
 using m_rotor_rpm = Mandala<mandala::sns::env::eng::rpm>;
@@ -202,6 +210,22 @@ bool starter_active = false;
 static uint32_t same_counter = 0;
 const uint32_t SAME_LIMIT = 30; //3 sec at 100ms interval
 
+// ERS
+static constexpr float ERS_VS = -10.f;        // stage 1:
+static constexpr uint32_t ERS_TIME_MS = 1000; // stage 1:
+static constexpr float ERS_LAUNCH_VS = -10.f; // stage 2:
+static constexpr float ERS_LAUNCH_ALT = 50.f; // stage 2:
+
+enum ers_stage_e {
+    ERS_IDLE,
+    ERS_GLIDER,
+    ERS_LAUNCHED,
+};
+
+static ers_stage_e ers_stage{ERS_IDLE};
+static uint32_t ers_t0{0};
+static bool ers_blocked{false};
+
 int main()
 {
     schedule_periodic(task("on_main"), TASK_MAIN_MS);
@@ -212,7 +236,7 @@ int main()
     task("uvhpu"); //GCS with terminal command `vmexec("uvhpu")`
 
     //subscribe
-    m_pwr_ign();
+    m_pwr_eng();
     m_sw_starter();
     m_eng_ctr();
     m_fps_adc();
@@ -221,6 +245,11 @@ int main()
     m_reg_yaw();
     m_health();
     m_ltt();
+    m_ers_launch();
+    m_ers_block();
+    m_eng_hgl();
+    m_eng_cut();
+    m_inair();
 
     receive(PORT_ID, "on_serial");
     receive(PORT_ID_FUEL, "on_fuel_serial");
@@ -283,8 +312,80 @@ EXPORT void on_start_eng()
     }
 }
 
+void ers_glider()
+{
+    ers_stage = ERS_GLIDER;
+    m_eng_hgl::publish((uint32_t) mandala::eng_hgl_on);
+
+    printf("ERS: glider on, vs=%.1f", m_vspeed::value());
+    printf("ERS: glider on, alt=%.0f", m_altitude::value());
+}
+
+void ers_launch()
+{
+    ers_stage = ERS_LAUNCHED;
+    m_pwr_eng::publish((uint32_t) mandala::pwr_eng_off);
+    m_eng_cut::publish((uint32_t) mandala::eng_cut_on);
+    m_ers_launch::publish((uint32_t) mandala::ers_launch_on);
+
+    printf("ERS: launch, vs=%.1f", m_vspeed::value());
+    printf("ERS: launch, alt=%.0f", m_altitude::value());
+}
+
+void ers_check()
+{
+    if (ers_stage == ERS_LAUNCHED)
+        return;
+
+    if ((uint32_t) m_ers_launch::value() == mandala::ers_launch_on) {
+        ers_stage = ERS_LAUNCHED;
+        return;
+    }
+
+    const bool blocked = (uint32_t) m_ers_block::value() == mandala::ers_block_on;
+    if (blocked != ers_blocked) {
+        ers_blocked = blocked;
+        printf(blocked ? "ERS: auto launch blocked" : "ERS: auto launch enabled");
+    }
+
+    const float vs = m_vspeed::value();
+
+    if (ers_stage == ERS_GLIDER) {
+        // stage 2
+        if (!blocked && vs < ERS_LAUNCH_VS && m_altitude::value() < ERS_LAUNCH_ALT)
+            ers_launch();
+        return;
+    }
+
+    // stage 1
+    const uint32_t mode = (uint32_t) m_mode::value();
+    const bool armed = mode != mandala::proc_mode_TAXI && (uint32_t) m_inair::value() != mandala::ins_inair_no;
+
+    if (!armed || !(vs < ERS_VS)) {
+        ers_t0 = 0;
+        return;
+    }
+
+    const uint32_t now = time_ms();
+    if (ers_t0 == 0) {
+        ers_t0 = now ? now : 1;
+        printf("ERS: sink vs=%.1f", vs);
+        return;
+    }
+
+    if (now - ers_t0 >= ERS_TIME_MS) {
+        ers_glider();
+    }
+}
+
 EXPORT void on_safety()
 {
+    // ers
+    ers_check();
+
+    if (ers_stage != ERS_IDLE)
+        return;
+
     //datalink
     if ((uint32_t) m_ltt::value() < 10) {
         m_health::publish((uint32_t) mandala::sys_health_normal);
@@ -299,9 +400,6 @@ EXPORT void on_safety()
             m_mode::publish((uint32_t) mandala::proc_mode_LANDING);
         }
     }
-
-    // ers
-    // Implement ERS (Emergency Recovery System) checks here
 }
 
 EXPORT uint8_t calcCRC(const uint8_t *buf, size_t size)
