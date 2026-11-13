@@ -27,9 +27,13 @@ using m_uvhpu_status = Mandala<mandala::est::env::usrc::c1>;
 using m_uvhpu_ebat = Mandala<mandala::est::env::usr::u11>;
 
 using m_uvhpu_hold = Mandala<mandala::est::env::usrc::c2>;
-using m_procedure = Mandala<mandala::cmd::nav::proc::mode>;
+using m_mode = Mandala<mandala::cmd::nav::proc::mode>;
 
 using m_uvhpu_vsys = Mandala<mandala::sns::env::pwr::vsys>;
+
+//datalink
+using m_ltt = Mandala<mandala::est::env::sys::ltt>;
+using m_health = Mandala<mandala::est::env::sys::health>;
 
 //Engine
 using m_pwr_ign = Mandala<mandala::ctr::env::pwr::eng>;
@@ -53,7 +57,10 @@ using m_warn = Mandala<mandala::est::env::usrc::c3>;
 using m_reg_yaw = Mandala<mandala::cmd::nav::reg::yaw>;
 using m_trim_rudder_l = Mandala<mandala::est::env::usrf::f9>;
 
-const uint16_t TASK_FUEL_MS{500}; //msec
+const uint16_t TASK_MAIN_MS{100};      //msec
+const uint16_t TASK_START_ENG_MS{100}; //msec
+const uint16_t TASK_FUEL_MS{500};      //msec
+const uint16_t TASK_SAFETY_MS{100};    //msec
 
 uint8_t snd_fuel_buf[MSG_FUEL_SIZE] = {};
 uint8_t ADR_FUEL = 170;
@@ -195,51 +202,33 @@ bool starter_active = false;
 static uint32_t same_counter = 0;
 const uint32_t SAME_LIMIT = 30; //3 sec at 100ms interval
 
-constexpr const uint16_t SERVO_TASK_MS{20};
-constexpr const float F = 2.f;
-constexpr const float Ampl = 1.f;
-constexpr const float w = 2.f * PI * F;
-constexpr const float T = 1.f / F;
-
-float t = 0.f;
-
-using m_sin_test = Mandala<mandala::est::env::usrf::f8>;
-
 int main()
 {
-    schedule_periodic(task("on_main"), 100);
-    schedule_periodic(task("on_start_eng"), 100);
+    schedule_periodic(task("on_main"), TASK_MAIN_MS);
+    schedule_periodic(task("on_start_eng"), TASK_START_ENG_MS);
     schedule_periodic(task("on_fuel"), TASK_FUEL_MS);
-    //schedule_periodic(task("on_test_servo"), SERVO_TASK_MS);
+    schedule_periodic(task("on_safety"), TASK_SAFETY_MS);
 
     task("uvhpu"); //GCS with terminal command `vmexec("uvhpu")`
 
-    m_pwr_ign(); //subscribe
+    //subscribe
+    m_pwr_ign();
     m_sw_starter();
     m_eng_ctr();
     m_fps_adc();
     m_rotor_rpm();
-    m_procedure();
+    m_mode();
     m_reg_yaw();
+    m_health();
+    m_ltt();
 
     receive(PORT_ID, "on_serial");
     receive(PORT_ID_FUEL, "on_fuel_serial");
 }
 
-EXPORT void on_test_servo()
-{
-    float ctrl = Ampl * sin(w * t);
-
-    t += SERVO_TASK_MS / 1000.f;
-    if (t >= T) {
-        t = 0.f;
-    }
-
-    m_sin_test::publish(ctrl);
-}
-
 EXPORT void on_main()
 {
+    // rudder trim logic
     if (m_reg_yaw::value() >= 1) {
         m_trim_rudder_l::publish(-0.4f);
     } else {
@@ -262,7 +251,7 @@ EXPORT void on_main()
     }
 
     //pu hold
-    if (m_procedure::value() == (uint32_t) mandala::proc_mode_TAXI) { //only in taxi mode
+    if (m_mode::value() == (uint32_t) mandala::proc_mode_TAXI) { //only in taxi mode
         m_uvhpu_hold::publish(false);
     } else {
         m_uvhpu_hold::publish(true);
@@ -292,6 +281,27 @@ EXPORT void on_start_eng()
             //printf("starter finished");
         }
     }
+}
+
+EXPORT void on_safety()
+{
+    //datalink
+    if ((uint32_t) m_ltt::value() < 10) {
+        m_health::publish((uint32_t) mandala::sys_health_normal);
+    }
+
+    if ((uint32_t) m_health::value() == mandala::sys_health_warning) {
+        const uint32_t mode = (uint32_t) m_mode::value();
+
+        const bool landing_inhibit = (mode == mandala::proc_mode_TAXI) || (mode == mandala::proc_mode_TAKEOFF);
+
+        if (!landing_inhibit && mode != mandala::proc_mode_LANDING) {
+            m_mode::publish((uint32_t) mandala::proc_mode_LANDING);
+        }
+    }
+
+    // ers
+    // Implement ERS (Emergency Recovery System) checks here
 }
 
 EXPORT uint8_t calcCRC(const uint8_t *buf, size_t size)
@@ -468,17 +478,13 @@ void processVESCPackage(const uint32_t &msg_id, const uint8_t *data, VESC_CAN_Da
         break;
     }
     case STATUS_MSG_2: {
-        vesc_data->apm_hours = uint32_t((data[0] << 24) | (data[1] << 16) | (data[2] << 8)
-                                        | data[3]);
-        vesc_data->apm_hours_charged = uint32_t((data[4] << 24) | (data[5] << 16) | (data[6] << 8)
-                                                | data[7]);
+        vesc_data->apm_hours = uint32_t((data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]);
+        vesc_data->apm_hours_charged = uint32_t((data[4] << 24) | (data[5] << 16) | (data[6] << 8) | data[7]);
         break;
     }
     case STATUS_MSG_3: {
-        vesc_data->watt_hours = uint32_t((data[0] << 24) | (data[1] << 16) | (data[2] << 8)
-                                         | data[3]);
-        vesc_data->watt_hours_charged = uint32_t((data[4] << 24) | (data[5] << 16) | (data[6] << 8)
-                                                 | data[7]);
+        vesc_data->watt_hours = uint32_t((data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]);
+        vesc_data->watt_hours_charged = uint32_t((data[4] << 24) | (data[5] << 16) | (data[6] << 8) | data[7]);
         break;
     }
     case STATUS_MSG_4: {
